@@ -1,0 +1,193 @@
+// OmniEdit 后端服务入口。
+//
+// 监听飞牛统一网关转发的 Unix Socket，对外提供：
+//   - 前端静态资源（{prefix}/）
+//   - 文件读写 API（{prefix}/api/*）
+//
+// 由 cmd/main 以下列方式拉起：
+//
+//	omniedit --socket ${TRIM_APPDEST}/app.sock --static ${TRIM_APPDEST}/dist
+package main
+
+import (
+	"context"
+	"flag"
+	"log"
+	"net"
+	"net/http"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"time"
+
+	"omniedit/server/internal/api"
+	"omniedit/server/internal/files"
+	"omniedit/server/internal/openapi"
+	"omniedit/server/internal/watcher"
+)
+
+func main() {
+	var (
+		socketPath  = flag.String("socket", "app.sock", "统一网关 Unix Socket 路径")
+		staticDir   = flag.String("static", "dist", "前端构建产物目录")
+		prefix      = flag.String("prefix", "/app/omniedit", "统一网关前缀（gatewayPrefix）")
+		appName     = flag.String("app-name", "omniedit", "应用名（须与 manifest 的 appname 一致）")
+		devAllowAll = flag.Bool("dev-allow-all", false, "开发调试：放行无网关身份的请求（生产禁止开启）")
+		httpAddr    = flag.String("http", "", "开发调试：额外监听的 HTTP 地址（如 127.0.0.1:8899），便于浏览器直连（生产留空）")
+		devRoot     = flag.String("dev-root", "", "开发调试：临时授权的根目录（配合 --dev-allow-all），使文件服务可访问该目录（生产禁止开启）")
+	)
+	flag.Parse()
+
+	// 标准化前缀：确保以 / 开头、不以 / 结尾。
+	gwPrefix := strings.TrimSuffix(*prefix, "/")
+	if !strings.HasPrefix(gwPrefix, "/") {
+		gwPrefix = "/" + gwPrefix
+	}
+
+	log.Printf("OmniEdit 后端启动: socket=%s static=%s prefix=%s", *socketPath, *staticDir, gwPrefix)
+
+	// 开放 API 客户端（通过系统 Unix Socket 调用）。
+	openClient := openapi.New(*appName)
+
+	// 文件服务：生产由开放 API 查询授权目录后注入（默认拒绝）；
+	// 开发调试可通过 --dev-root 注入临时授权根目录，便于本机端到端联调。
+	fileSvc := newFileService(openClient)
+	if *devRoot != "" {
+		if abs, err := filepath.Abs(*devRoot); err == nil {
+			fileSvc.SetAuthorizedRoots([]string{abs})
+			log.Printf("[dev] 临时授权根目录: %s", abs)
+		} else {
+			log.Fatalf("[dev] --dev-root 无效: %v", err)
+		}
+	}
+
+	h := &api.Handler{
+		FileSvc:     fileSvc,
+		OpenAPI:     openClient,
+		Prefix:      gwPrefix,
+		DevAllowAll: *devAllowAll,
+	}
+
+	// 文件变更推送：轮询 watcher + WebSocket Hub。
+	// 打开文件时注册监控，外部修改后推送给所有连接的客户端。
+	fileWatcher := watcher.New(2 * time.Second)
+	h.Hub = api.NewHub(fileWatcher)
+	defer fileWatcher.Stop()
+
+	mux := buildMux(gwPrefix, *staticDir, h)
+
+	// 监听 Unix Socket（统一网关会把请求转发到这里）。
+	// 确保父目录存在，并清理可能残留的 socket 文件。
+	if err := os.MkdirAll(filepath.Dir(*socketPath), 0o755); err != nil {
+		log.Fatalf("创建 socket 目录失败: %v", err)
+	}
+	_ = os.Remove(*socketPath)
+
+	ln, err := net.Listen("unix", *socketPath)
+	if err != nil {
+		log.Fatalf("监听 Unix Socket 失败: %v", err)
+	}
+	// 让网关/应用用户可访问该 socket。
+	_ = os.Chmod(*socketPath, 0o666)
+
+	srv := &http.Server{Handler: mux}
+
+	// 开发调试：额外监听 HTTP 地址，便于浏览器/前端 dev server 直连（生产留空不启用）。
+	// 复用同一个 mux（handler），但使用独立的 http.Server 绑定 TCP 端口。
+	if *httpAddr != "" {
+		devSrv := &http.Server{Addr: *httpAddr, Handler: mux}
+		go func() {
+			log.Printf("[dev] HTTP 调试监听: http://%s%s/", *httpAddr, gwPrefix)
+			if err := devSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("[dev] HTTP 监听失败: %v", err)
+			}
+		}()
+	}
+
+	// 优雅退出：收到信号后关闭服务并清理 socket。
+	go func() {
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+		<-sig
+		log.Println("收到退出信号，正在关闭...")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(ctx)
+	}()
+
+	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+		log.Fatalf("HTTP 服务异常退出: %v", err)
+	}
+	_ = os.Remove(*socketPath)
+	log.Println("OmniEdit 后端已退出")
+}
+
+// newFileService 创建文件服务。
+// 首版以「默认拒绝」初始化（未配置授权目录），M1 阶段接入开放 API 的
+// 授权目录查询后，通过 SetAuthorizedRoots 动态注入可访问目录。
+func newFileService(_ *openapi.Client) *files.Service {
+	return files.NewService(nil)
+}
+
+// buildMux 装配路由。
+func buildMux(prefix, staticDir string, h *api.Handler) http.Handler {
+	mux := http.NewServeMux()
+
+	// API 路由：{prefix}/api/*
+	apiMux := http.NewServeMux()
+	apiMux.HandleFunc("/api/health", h.Health)
+	apiMux.HandleFunc("/api/ws", h.WSHandler)
+	apiMux.HandleFunc("/api/dir/roots", h.ListRoots)
+	apiMux.HandleFunc("/api/dir/list", h.ListDir)
+	apiMux.HandleFunc("/api/search", h.Search)
+	apiMux.HandleFunc("/api/file/read", h.ReadFile)
+	apiMux.HandleFunc("/api/file/write", h.WriteFile)
+	mux.Handle(prefix+"/api/", http.StripPrefix(prefix, apiMux))
+
+	// 静态资源 + SPA 回退：{prefix}/
+	mux.Handle(prefix+"/", spaHandler(prefix, staticDir))
+
+	// 根路径重定向到应用前缀（便于本地直接访问）。
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			http.Redirect(w, r, prefix+"/", http.StatusFound)
+			return
+		}
+		http.NotFound(w, r)
+	})
+
+	return logRequests(mux)
+}
+
+// spaHandler 对未命中的非资源请求回退到 index.html（前端路由）。
+func spaHandler(prefix, staticDir string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rel := strings.TrimPrefix(r.URL.Path, prefix)
+		if rel == "" || rel == "/" {
+			http.ServeFile(w, r, filepath.Join(staticDir, "index.html"))
+			return
+		}
+		full := filepath.Join(staticDir, filepath.Clean("/"+rel))
+		if info, err := os.Stat(full); err == nil && !info.IsDir() {
+			// 直接按本地路径提供文件。不能用 fs.ServeHTTP(w, r)——它基于原始
+			// URL 路径（含统一网关前缀 /app/omniedit）查找，会把前缀拼进本地
+			// 路径导致 404。http.ServeFile 按 full 精确提供，并正确处理
+			// Content-Type / 缓存头 / Range。
+			http.ServeFile(w, r, full)
+			return
+		}
+		// 其余回退到 index.html，交由前端路由处理。
+		http.ServeFile(w, r, filepath.Join(staticDir, "index.html"))
+	})
+}
+
+// logRequests 简单请求日志。
+func logRequests(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r)
+		log.Printf("%s %s", r.Method, r.URL.Path)
+	})
+}
+

@@ -1,0 +1,6 @@
+#!/bin/bash
+# 卸载前执行 / before uninstall
+# 尊重用户数据：先停止服务，运行数据默认保留（是否删除由向导决定）。
+# 尝试调用 main stop 以清理运行中的服务与 socket。
+"${TRIM_APPDEST}/../cmd/main" stop >/dev/null 2>&1 || true
+exit 0

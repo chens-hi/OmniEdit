@@ -1,0 +1,4 @@
+#!/bin/bash
+# 升级后执行 / after upgrade
+# 若应用正在运行，fnOS 可能会在升级后重新启动应用。首版无需额外操作。
+exit 0

@@ -1,0 +1,4 @@
+# OmniEdit 应用权限声明 / privilege
+# 参考: https://developer.fnnas.com/docs/core-concepts/privilege/
+# 首版通过统一网关访问 + 开放 API 授权目录，无需额外系统级权限。
+# 如后续需要后台常驻、开机自启等能力，在此追加声明。

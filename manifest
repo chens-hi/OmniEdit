@@ -1,0 +1,15 @@
+appname=omniedit
+version=0.1.0
+display_name=OmniEdit
+desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
+source=thirdparty
+platform=all
+maintainer=OmniEdit
+maintainer_url=https://github.com/your-org/OmniEdit
+os_min_version=1.2.0
+micro_app=true
+desktop_uidir=ui
+desktop_applaunchname=omniedit.main
+ctl_stop=true
+checkport=false
+changelog=首版架构骨架 / Initial architecture skeleton.

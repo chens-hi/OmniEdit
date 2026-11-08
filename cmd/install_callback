@@ -1,0 +1,6 @@
+#!/bin/bash
+# 安装后执行 / after install
+# 可重复执行。确保运行数据目录存在。
+mkdir -p "${TRIM_PKGVAR}" 2>/dev/null || true
+mkdir -p "${TRIM_PKGETC}" 2>/dev/null || true
+exit 0

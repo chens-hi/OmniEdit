@@ -1,0 +1,4 @@
+#!/bin/bash
+# 安装前执行 / before install
+# 可重复执行。首版无需特殊操作。
+exit 0

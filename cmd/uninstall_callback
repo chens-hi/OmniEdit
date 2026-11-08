@@ -1,0 +1,4 @@
+#!/bin/bash
+# 卸载后执行 / after uninstall cleanup
+# 首版保留用户运行数据；如向导选择删除，可在此清理 TRIM_PKGVAR。
+exit 0

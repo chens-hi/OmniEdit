@@ -1,0 +1,4 @@
+#!/bin/bash
+# 配置变更后执行 / after config change
+# 若配置变更需要重启服务，可在此调用 main 的 stop/start。
+exit 0

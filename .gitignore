@@ -1,0 +1,29 @@
+# Go
+server/omniedit
+server/*.exe
+
+# Node / 前端
+node_modules/
+web/dist/
+app/dist/
+
+# 打包产物
+*.fpk
+
+# 构建输出
+build/
+out/
+
+# 运行时 / 本地调试
+*.sock
+*.log
+
+# IDE / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 根目录意外图标副本（应用实际使用 ui/images/icon_*.png）
+/ICON.png
+/ICON_256.png

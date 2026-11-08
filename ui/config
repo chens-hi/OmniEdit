@@ -1,0 +1,30 @@
+{
+  ".url": {
+    "omniedit.main": {
+      "title": "OmniEdit",
+      "icon": "images/icon_{0}.png",
+      "type": "iframe",
+      "protocol": "",
+      "gatewayPrefix": "/app/omniedit",
+      "gatewaySocket": "app.sock",
+      "url": "/app/omniedit",
+      "allUsers": true
+    },
+    "omniedit.editor": {
+      "title": "OmniEdit",
+      "icon": "images/icon_{0}.png",
+      "type": "iframe",
+      "protocol": "",
+      "gatewayPrefix": "/app/omniedit",
+      "gatewaySocket": "app.sock",
+      "url": "/app/omniedit",
+      "allUsers": true,
+      "fileTypes": [
+        "txt", "log", "conf", "ini", "env", "yml", "yaml", "toml",
+        "json", "jsonc", "md", "markdown", "html", "htm", "xml", "svg",
+        "cs", "go", "js", "ts", "css", "py", "sh", "sql"
+      ],
+      "noDisplay": true
+    }
+  }
+}

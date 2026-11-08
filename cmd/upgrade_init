@@ -1,0 +1,4 @@
+#!/bin/bash
+# 升级前执行 / before upgrade
+# 可在此做数据/配置迁移与兼容性检查。首版无需操作。
+exit 0
