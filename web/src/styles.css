@@ -5,6 +5,11 @@
   --border: #333;
   --accent: #4a9eff;
   --error: #f66;
+  /* 显示符号（空白可见化）颜色——暗色主题 */
+  --ws-dot-color: rgba(255, 255, 255, 0.28);
+  --ws-line-color: rgba(255, 255, 255, 0.25);
+  --ws-mark-color: rgba(255, 255, 255, 0.38);
+  --ws-soft-color: rgba(100, 150, 255, 0.55);
 }
 
 /* 浅色主题：宿主为 light 时通过 html[data-theme="light"] 激活。 */
@@ -15,6 +20,11 @@ html[data-theme="light"] {
   --border: #e1e4e8;
   --accent: #0969da;
   --error: #cf222e;
+  /* 显示符号颜色——浅色主题（深灰系，蓝紫软折行稍加深） */
+  --ws-dot-color: rgba(60, 60, 60, 0.30);
+  --ws-line-color: rgba(60, 60, 60, 0.28);
+  --ws-mark-color: rgba(60, 60, 60, 0.40);
+  --ws-soft-color: rgba(60, 110, 220, 0.50);
 }
 
 * {

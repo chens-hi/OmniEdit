@@ -134,26 +134,26 @@ export function whitespacePlugin(getCfg: () => WhitespaceConfig) {
 
 /**
  * 符号样式（baseTheme 全局注入，scoped 样式够不到 CM 内部 DOM）。
- * mark 方案下空格仍是空格字符——宽度不变；可见性由背景/下划线提供。
+ * 颜色全部走 styles.css 的主题变量（--ws-*），明暗主题自动切换。
  */
 export const whitespaceTheme = EditorView.baseTheme({
   // 空格：底色小点感（利用 background 圆点径向渐变，居中，不占额外宽度）
   '.cm-ws-space': {
-    backgroundImage: 'radial-gradient(circle, var(--ws-dot-color, rgba(128,128,128,0.6)) 1px, transparent 1.2px)',
+    backgroundImage: 'radial-gradient(circle, var(--ws-dot-color) 1px, transparent 1.2px)',
     backgroundSize: '100% 100%',
     backgroundPosition: 'center',
     backgroundRepeat: 'no-repeat',
   },
   // 制表符：底部一条短横线（宽度 = tab 渲染宽度，天然对齐）
   '.cm-ws-tab': {
-    backgroundImage: 'linear-gradient(to right, var(--ws-dot-color, rgba(128,128,128,0.5)) 0 60%, transparent 60%)',
+    backgroundImage: 'linear-gradient(to right, var(--ws-line-color) 0 60%, transparent 60%)',
     backgroundSize: '100% 1px',
     backgroundPosition: 'left bottom',
     backgroundRepeat: 'no-repeat',
   },
-  // 行尾 ¶ / 软折行 ↩：绝对定位叠加，不参与文档流宽度
+  // 行尾 ¶ / 软折行 ↩：零宽叠加，不参与文档流宽度
   '.cm-ls-mark': {
-    color: 'var(--ws-mark-color, rgba(128,128,128,0.55))',
+    color: 'var(--ws-mark-color)',
     pointerEvents: 'none',
     display: 'inline-block',
     width: '0',
@@ -161,6 +161,6 @@ export const whitespaceTheme = EditorView.baseTheme({
     whiteSpace: 'nowrap',
   },
   '.cm-ls-soft': {
-    color: 'var(--ws-soft-color, rgba(120,150,255,0.6))',
+    color: 'var(--ws-soft-color)',
   },
 });
