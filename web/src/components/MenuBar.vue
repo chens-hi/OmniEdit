@@ -115,9 +115,10 @@ const menus = computed<Menu[]>((): Menu[] => {
         { type: 'sep' },
         {
           // 缩进 ▸ 空格（点击循环 2→4→8→2）/ 制表符（固定 4）
+          // 父项右侧按当前选择显示：空格 2/4/8 或 制表符
           type: 'item',
           label: t('menuIndent'),
-          valueText: () => (store.indentMode === 'spaces' ? `${store.indentWidth}` : t('menuIndentTabFixed')),
+          valueText: () => (store.indentMode === 'spaces' ? `${t('menuIndentSpacesCycle')} ${store.indentWidth}` : t('menuIndentTabFixed')),
           children: [
             {
               type: 'radio',
