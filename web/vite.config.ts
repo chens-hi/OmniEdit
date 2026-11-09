@@ -15,11 +15,15 @@ export default defineConfig({
   plugins: [vue()],
   server: {
     // 本地开发：把 base 路径下的 API 请求代理到本地 Go 后端。
+    // 注意：**不能** rewrite 掉 /app/omniedit 前缀。Go 端 mux 只挂载
+    // prefix+"/api/"（见 server/main.go buildMux），剥掉前缀会让所有
+    // /api/* 请求 404，即 `pnpm dev` 联调链路完全不通。
+    // NAS 上由统一网关同域转发，同样带前缀，行为保持一致。
     proxy: {
       [`${BASE}api`]: {
         target: BACKEND_TARGET,
         changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/app\/omniedit/, ''),
+        ws: true, // /api/ws 文件变更推送：dev 下也需代理 WebSocket。
       },
     },
   },
