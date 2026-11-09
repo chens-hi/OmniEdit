@@ -68,7 +68,7 @@ const dict = {
   menuExit: { zh: '退出', en: 'Exit' },
   menuFind: { zh: '查找…', en: 'Find…' },
   menuReplace: { zh: '替换…', en: 'Replace…' },
-  menuWordWrap: { zh: '换行回绕', en: 'Word Wrap' },
+  menuWordWrap: { zh: '自动换行', en: 'Word Wrap' },
   menuLineNumbers: { zh: '行号', en: 'Line Numbers' },
   menuIndent: { zh: '缩进', en: 'Indent' },
   menuIndentSpacesCycle: { zh: '空格', en: 'Spaces' },
