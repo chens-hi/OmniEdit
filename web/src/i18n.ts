@@ -74,6 +74,7 @@ const dict = {
   menuIndentSpacesCycle: { zh: '空格', en: 'Spaces' },
   menuIndentTabFixed: { zh: '制表符', en: 'Tab' },
   menuFont: { zh: '字体', en: 'Font' },
+  menuFontSizeItem: { zh: '字号', en: 'Font Size' },
   menuShortcuts: { zh: '快捷键速查', en: 'Keyboard Shortcuts' },
   menuAbout: { zh: '关于 OmniEdit', en: 'About OmniEdit' },
   promptOpenPath: { zh: '输入要打开的文件路径（本地开发模式）：', en: 'Enter file path to open (local dev mode):' },

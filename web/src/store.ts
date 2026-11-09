@@ -115,9 +115,9 @@ export const useEditorStore = defineStore('editor', () => {
     const next = idx === -1 ? 2 : seq[(idx + 1) % seq.length];
     setIndentMode('spaces', next);
   }
-  /** 字体大小循环 12→14→16→18→12（菜单「字体」项点击）。 */
+  /** 字体大小循环 12→14→16→18→20→12（菜单「字号」项点击）。 */
   function cycleFontSize() {
-    const seq = [12, 14, 16, 18];
+    const seq = [12, 14, 16, 18, 20];
     const idx = seq.indexOf(fontSize.value);
     setFontSize(seq[(idx + 1) % seq.length]);
   }

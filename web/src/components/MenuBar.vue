@@ -138,16 +138,12 @@ const menus = computed<Menu[]>((): Menu[] => {
         },
         { type: 'sep' },
         {
-          // 字体 ▸ 12/14/16/18 单选
-          type: 'item',
-          label: t('menuFont'),
-          valueText: () => `${store.fontSize}`,
-          children: [
-            { type: 'radio', label: '12', radioGroup: 'font', selected: () => store.fontSize === 12, action: () => store.setFontSize(12) },
-            { type: 'radio', label: '14', radioGroup: 'font', selected: () => store.fontSize === 14, action: () => store.setFontSize(14) },
-            { type: 'radio', label: '16', radioGroup: 'font', selected: () => store.fontSize === 16, action: () => store.setFontSize(16) },
-            { type: 'radio', label: '18', radioGroup: 'font', selected: () => store.fontSize === 18, action: () => store.setFontSize(18) },
-          ],
+          // 字号：点击循环 12→14→16→18→20→12。selected 必须是函数（模板统一 item.selected?.() 调用）。
+          type: 'radio',
+          label: `${t('menuFontSizeItem')}: ${store.fontSize}`,
+          radioGroup: 'font',
+          selected: () => true,
+          action: () => store.cycleFontSize(),
         },
       ],
     },
