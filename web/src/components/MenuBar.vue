@@ -115,34 +115,28 @@ const menus = computed<Menu[]>((): Menu[] => {
         { type: 'sep' },
         {
           // 缩进 ▸ 空格（点击循环 2→4→8→2）/ 制表符（固定 4）
-          // 父项右侧按当前选择显示：空格 2/4/8 或 制表符
+          // 父项右侧按当前选择显示：空格 2/4/8 或 制表符。循环项无圆点。
           type: 'item',
           label: t('menuIndent'),
           valueText: () => (store.indentMode === 'spaces' ? `${t('menuIndentSpacesCycle')} ${store.indentWidth}` : t('menuIndentTabFixed')),
           children: [
             {
-              type: 'radio',
+              type: 'item',
               label: t('menuIndentSpacesCycle'),
-              radioGroup: 'indent',
-              selected: () => store.indentMode === 'spaces',
               action: () => store.cycleIndentWidth(),
             },
             {
-              type: 'radio',
+              type: 'item',
               label: t('menuIndentTabFixed'),
-              radioGroup: 'indent',
-              selected: () => store.indentMode === 'tabs',
               action: () => store.setIndentMode('tabs', 4),
             },
           ],
         },
         { type: 'sep' },
         {
-          // 字号：点击循环 12→14→16→18→20→12。selected 必须是函数（模板统一 item.selected?.() 调用）。
-          type: 'radio',
+          // 字号：点击循环 12→14→16→18→20→12。循环项无圆点，右侧显示当前值。
+          type: 'item',
           label: `${t('menuFontSizeItem')}: ${store.fontSize}`,
-          radioGroup: 'font',
-          selected: () => true,
           action: () => store.cycleFontSize(),
         },
       ],
