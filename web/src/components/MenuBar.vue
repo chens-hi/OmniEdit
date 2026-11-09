@@ -36,6 +36,8 @@ interface MenuItem {
   children?: MenuItem[];
   /** 父项右侧的动态值（如缩进当前宽度） */
   valueText?: () => string;
+  /** 点击循环项：点击时闪烁 accent 高亮作为反馈 */
+  cycle?: boolean;
 }
 
 interface Menu {
@@ -123,20 +125,24 @@ const menus = computed<Menu[]>((): Menu[] => {
             {
               type: 'item',
               label: t('menuIndentSpacesCycle'),
+              cycle: true,
               action: () => store.cycleIndentWidth(),
             },
             {
               type: 'item',
               label: t('menuIndentTabFixed'),
+              cycle: true,
               action: () => store.setIndentMode('tabs', 4),
             },
           ],
         },
         { type: 'sep' },
         {
-          // 字号：点击循环 12→14→16→18→20→12。循环项无圆点，右侧显示当前值。
+          // 字号：点击循环 12→14→16→18→20→12。数值右置（valueText），对齐缩进渲染。
           type: 'item',
-          label: `${t('menuFontSizeItem')}: ${store.fontSize}`,
+          label: t('menuFontSizeItem'),
+          valueText: () => `${store.fontSize}`,
+          cycle: true,
           action: () => store.cycleFontSize(),
         },
       ],
@@ -155,6 +161,20 @@ const menus = computed<Menu[]>((): Menu[] => {
 
 const openMenu = ref<number | null>(null);
 const subOpen = ref<number | null>(null); // 当前展开的二级子菜单（父项 index）
+// 点击反馈：记录正在闪烁的菜单项标识（150ms 后清除，CSS 动画渐出）。
+const flashItem = ref<string>('');
+let flashTimer: number | undefined;
+function flashOf(item: MenuItem): string {
+  return item.label ?? '';
+}
+function onItemClick(item: MenuItem) {
+  item.action?.();
+  if (item.cycle) {
+    flashItem.value = flashOf(item);
+    window.clearTimeout(flashTimer);
+    flashTimer = window.setTimeout(() => (flashItem.value = ''), 180);
+  }
+}
 // keepOpen 计数：子菜单点击后不关闭面板（响应式触发重渲染以刷新 valueText/
 // selected），点击非循环项（如另一模式）或外部/Esc 时才关闭。
 const keepOpenCount = ref(0);
@@ -224,9 +244,10 @@ void lang;
                     disabled: child.disabled?.(),
                     radio: child.type === 'radio',
                     selected: child.type === 'radio' && child.selected?.(),
+                    flash: child.cycle && flashItem === child.label,
                   }"
                   :disabled="child.disabled?.()"
-                  @click.stop="child.action?.(); keepOpenCount++; subOpen = iidx"
+                  @click.stop="onItemClick(child); keepOpenCount++; subOpen = iidx"
                 >
                   <span class="m-mark">{{ child.type === 'radio' ? (child.selected?.() ? '●' : '○') : '' }}</span>
                   <span class="m-text">{{ child.label }}</span>
@@ -243,9 +264,10 @@ void lang;
               checked: item.type === 'checkbox' && item.checked?.(),
               radio: item.type === 'radio',
               selected: item.type === 'radio' && item.selected?.(),
+              flash: item.cycle && flashItem === item.label,
             }"
             :disabled="item.disabled?.()"
-            @click.stop="item.action?.()"
+            @click.stop="onItemClick(item)"
           >
             <span class="m-mark">
               {{ item.type === 'checkbox' ? (item.checked?.() ? '✓' : '') : item.type === 'radio' ? (item.selected?.() ? '●' : '○') : '' }}
@@ -315,6 +337,15 @@ void lang;
 .m-shortcut { color: #888; font-size: 11px; }
 
 .m-sep { height: 1px; background: var(--border); margin: 4px 8px; }
+
+/* 循环项点击反馈：accent 闪烁 180ms 渐出 */
+.m-item.flash {
+  animation: mflash 180ms ease-out;
+}
+@keyframes mflash {
+  from { background: rgba(255, 255, 255, 0.18); }
+  to { background: transparent; }
+}
 
 /* 二级子菜单 */
 .m-has-sub { position: relative; cursor: pointer; }

@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.3.8
+version=0.3.9
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.3.8: 状态栏制表符显示去掉固定宽度数字
+changelog=0.3.9: 字号数值右置对齐缩进；循环项点击闪烁反馈
