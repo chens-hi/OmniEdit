@@ -16,7 +16,7 @@ import { initTheme, theme } from './theme';
 import { initLang, t, lang } from './i18n';
 import { startFileWatch } from './fileWatch';
 import { createSearchPanel, openSearch } from './searchPanel';
-import { whitespacePlugin, whitespaceTheme } from './whitespace';
+import { whitespaceExtensions } from './whitespace';
 import MenuBar from './components/MenuBar.vue';
 import TabBar from './components/TabBar.vue';
 import MarkdownPreview from './components/MarkdownPreview.vue';
@@ -50,7 +50,7 @@ function buildWhitespaceExts(): Extension[] {
     showTabs: store.showTabs,
     showLineBreaks: store.showLineBreaks,
   };
-  return [whitespacePlugin(() => ({ ...cfg })), whitespaceTheme];
+  return whitespaceExtensions(() => ({ ...cfg }));
 }
 
 /** 缩进扩展组合：空格模式 = indentUnit 指定空格 + tabSize 渲染宽度；Tab 模式 = 制表符。 */
@@ -136,6 +136,8 @@ function mountEditor(tab: { id: number; content: string; path: string; name: str
     ],
     doc: tab.content,
   });
+  // debug 钩子：排障/自动化测试用（必须在 new EditorView 之后赋值）
+  (window as unknown as { __omnieditView?: EditorView | null }).__omnieditView = view;
   syncCursor(view.state);
 }
 

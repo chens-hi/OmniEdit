@@ -63,6 +63,9 @@ importers:
       '@vitejs/plugin-vue':
         specifier: ^5.2.1
         version: 5.2.4(vite@6.4.5)(vue@3.5.45(typescript@5.6.3))
+      playwright-core:
+        specifier: ^1.65.0
+        version: 1.65.0
       typescript:
         specifier: ~5.6.3
         version: 5.6.3
@@ -626,6 +629,11 @@ packages:
     peerDependenciesMeta:
       typescript:
         optional: true
+
+  playwright-core@1.65.0:
+    resolution: {integrity: sha512-vNSKgH6YqtN7cdT/L334zo0a+YwkrpicyrHJlWWPIm/Q+Nn2SWInil01oT0mbu96U4GgoRtCYQD9CzJQgju+lA==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   postcss@8.5.32:
     resolution: {integrity: sha512-LJlKCCAUFKOuZxipUdYw1NzIITEsPcgyOG9LkvRJvuKj/bRzbuRY0ARXvL0pWGpsZvn8jku+LMep2eU0seHp8g==}
@@ -1275,6 +1283,8 @@ snapshots:
       typescript: 5.6.3
     transitivePeerDependencies:
       - '@vue/composition-api'
+
+  playwright-core@1.65.0: {}
 
   postcss@8.5.32:
     dependencies:
