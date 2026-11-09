@@ -47,6 +47,10 @@ func main() {
 	}
 
 	log.Printf("OmniEdit 后端启动: socket=%s static=%s prefix=%s", *socketPath, *staticDir, gwPrefix)
+	// 运行身份诊断（privilege 文档「运行用户检查」）：真机上确认 root 模式
+	// 是否生效——uid/euid 非 0 即说明 run-as=root 未被应用，权限模型需复查。
+	log.Printf("[diag] 运行身份: uid=%d euid=%d TRIM_RUN_USERNAME=%q TRIM_USERNAME=%q",
+		os.Getuid(), os.Geteuid(), os.Getenv("TRIM_RUN_USERNAME"), os.Getenv("TRIM_USERNAME"))
 
 	// 开放 API 客户端（通过系统 Unix Socket 调用）。
 	openClient := openapi.New(*appName)
@@ -139,11 +143,9 @@ func buildMux(prefix, staticDir string, h *api.Handler) http.Handler {
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("/api/health", h.Health)
 	apiMux.HandleFunc("/api/ws", h.WSHandler)
-	apiMux.HandleFunc("/api/dir/roots", h.ListRoots)
-	apiMux.HandleFunc("/api/dir/list", h.ListDir)
-	apiMux.HandleFunc("/api/search", h.Search)
 	apiMux.HandleFunc("/api/file/read", h.ReadFile)
 	apiMux.HandleFunc("/api/file/write", h.WriteFile)
+	apiMux.HandleFunc("/api/file/unwatch", h.Unwatch)
 	mux.Handle(prefix+"/api/", http.StripPrefix(prefix, apiMux))
 
 	// 静态资源 + SPA 回退：{prefix}/
@@ -161,11 +163,20 @@ func buildMux(prefix, staticDir string, h *api.Handler) http.Handler {
 	return logRequests(mux)
 }
 
+// noCacheHeader 让浏览器不缓存 index.html。
+// 原因：index.html 引用带内容指纹的 assets（index-<hash>.js）。assets 可长缓存，
+// 但 index.html 本身若被 iframe 缓存，发版后浏览器仍引用旧指纹——用户升级后
+// 表现为"修好的 bug 还在"（v0.1.6→0.1.7 实测踩坑）。
+func noCacheHeader(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+}
+
 // spaHandler 对未命中的非资源请求回退到 index.html（前端路由）。
 func spaHandler(prefix, staticDir string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rel := strings.TrimPrefix(r.URL.Path, prefix)
 		if rel == "" || rel == "/" {
+			noCacheHeader(w)
 			http.ServeFile(w, r, filepath.Join(staticDir, "index.html"))
 			return
 		}
@@ -175,10 +186,13 @@ func spaHandler(prefix, staticDir string) http.Handler {
 			// URL 路径（含统一网关前缀 /app/omniedit）查找，会把前缀拼进本地
 			// 路径导致 404。http.ServeFile 按 full 精确提供，并正确处理
 			// Content-Type / 缓存头 / Range。
+			// 带指纹的 assets 内容不变即文件名不变，让 ServeFile 走默认
+			// 协商缓存（ETag/Last-Modified）即可，无需显式 Cache-Control。
 			http.ServeFile(w, r, full)
 			return
 		}
-		// 其余回退到 index.html，交由前端路由处理。
+		// 其余回退到 index.html，交由前端路由处理（同样 no-cache）。
+		noCacheHeader(w)
 		http.ServeFile(w, r, filepath.Join(staticDir, "index.html"))
 	})
 }
@@ -190,4 +204,3 @@ func logRequests(next http.Handler) http.Handler {
 		log.Printf("%s %s", r.Method, r.URL.Path)
 	})
 }
-

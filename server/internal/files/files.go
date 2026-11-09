@@ -12,8 +12,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
+	"unicode/utf8"
+
+	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 var (
@@ -54,16 +58,20 @@ func (s *Service) AuthorizedRoots() []string {
 //   - 生产（Linux）：/vol1/... 形式的绝对路径；
 //   - 本地开发（Windows）：D:\... 形式的绝对路径。
 //
-// 因此不盲目拼前缀，而是先 Clean 再要求结果为绝对路径，同时拒绝任何 ".."。
+// 穿越判定必须在 Clean **之前**做：filepath.Clean 会把 "/a/../../x" 折叠成
+// "/x"，Clean 后再找 ".." 永远找不到（旧实现正是如此，于是生产平台上完全
+// 依赖 IsPathAllowed 兜底，属于脆弱的巧合）。这里改为逐段检查原始路径中是否
+// 存在独立的 ".." 段——同时避免旧实现 `Contains(path, "..")` 误杀合法文件名
+// （如 NAS 上常见的 "v1..v2.md"、"归档..zip"）。
 func CleanAndValidate(raw string) (string, error) {
 	if strings.TrimSpace(raw) == "" {
 		return "", ErrPathTraversal
 	}
-	cleaned := filepath.Clean(raw)
-	// 拒绝目录穿越：Clean 后仍含 ".." 说明试图逃逸。
-	if strings.Contains(cleaned, "..") {
+	// 拒绝目录穿越：任何独立成段的 ".." 都视为试图逃逸。
+	if hasDotDotSegment(raw) {
 		return "", ErrPathTraversal
 	}
+	cleaned := filepath.Clean(raw)
 	// 必须是绝对路径：防止相对路径（如 "etc/passwd"）被解析到应用私有目录。
 	if !filepath.IsAbs(cleaned) {
 		return "", ErrPathTraversal
@@ -71,20 +79,107 @@ func CleanAndValidate(raw string) (string, error) {
 	return cleaned, nil
 }
 
-// IsPathAllowed 判断路径是否落在任一已授权目录内。
-// 若尚未配置授权目录（authorizedRoots 为空），当前返回 false 以「默认拒绝」，
-// 由调用方决定是否在开发模式下放宽。
-func (s *Service) IsPathAllowed(cleanedPath string) bool {
-	if len(s.authorizedRoots) == 0 {
-		return false
-	}
-	for _, root := range s.authorizedRoots {
-		root = filepath.Clean(root)
-		if cleanedPath == root || strings.HasPrefix(cleanedPath, root+string(filepath.Separator)) {
+// hasDotDotSegment 判断路径中是否存在独立的 ".." 段。
+// 同时按 '/' 与 '\' 拆分：请求参数可能来自另一平台的写法（如 Linux NAS 上
+// 传入 Windows 风格路径，或反之），不能只认当前平台的分隔符。
+func hasDotDotSegment(p string) bool {
+	normalized := strings.ReplaceAll(p, "\\", "/")
+	for _, seg := range strings.Split(normalized, "/") {
+		if seg == ".." {
 			return true
 		}
 	}
 	return false
+}
+
+// IsPathAllowed 判断路径是否落在任一已授权目录内（Service 自带的全局 roots，
+// 仅用于开发模式/测试）。生产环境按用户授权请用 PathWithinRoots。
+func (s *Service) IsPathAllowed(cleanedPath string) bool {
+	if len(s.authorizedRoots) == 0 {
+		return false
+	}
+	return PathWithinRoots(s.authorizedRoots, cleanedPath)
+}
+
+// PathWithinRoots 判断 cleanedPath 是否落在给定授权目录集合内。
+// 授权是「按用户」的，roots 由 API 层从开放 API 取得后传入；为空默认拒绝。
+//
+// 关键：比较前先用 EvalSymlinks 解析出**真实路径**。否则字面前缀匹配可被符号
+// 链接绕过——用户在授权目录内放一个指向 /etc 或 C:\Users 的软链接，请求
+// "<授权目录>/link" 就能读写授权范围之外的任意文件，整套授权模型形同虚设。
+// 授权根目录自身同样解析（NAS 上 /volX 常是指向真实存储的链接）。
+func PathWithinRoots(roots []string, cleanedPath string) bool {
+	if len(roots) == 0 {
+		return false
+	}
+	realPath, err := resolveReal(cleanedPath)
+	if err != nil {
+		// 无法确认真实路径（链接环、权限异常等）：保守拒绝。
+		return false
+	}
+	for _, root := range roots {
+		realRoot, err := resolveReal(filepath.Clean(root))
+		if err != nil {
+			continue
+		}
+		if withinTree(realPath, realRoot) {
+			return true
+		}
+	}
+	return false
+}
+
+// withinTree 判断 realPath 是否等于 realRoot 或位于其子树内。
+//
+// 注意区分平台语义：
+//   - Linux（NAS 生产）路径大小写敏感，必须逐字节比较，否则 "/vol1/Data" 会被
+//     误判为 "/vol1/data" 的子路径，反而造成越权。
+//   - Windows（本地开发）路径大小写不敏感，比较前统一为小写。
+//   - realRoot 为分隔符结尾（如 "/"）时不再追加，避免拼出 "//" 这类永不匹配的前缀。
+func withinTree(realPath, realRoot string) bool {
+	sep := string(filepath.Separator)
+	if runtime.GOOS == "windows" {
+		// Windows 路径大小写不敏感。
+		realPath = strings.ToLower(realPath)
+		realRoot = strings.ToLower(realRoot)
+	}
+	if realPath == realRoot {
+		return true
+	}
+	if !strings.HasSuffix(realRoot, sep) {
+		realRoot += sep
+	}
+	return strings.HasPrefix(realPath, realRoot)
+}
+
+// resolveReal 解析路径中的全部符号链接，返回真实绝对路径。
+//
+//   - 路径存在：直接 EvalSymlinks。
+//   - 路径不存在（例如尚未创建的目标文件）：解析其父目录后拼回 base name，
+//     这样"在授权目录内新建文件"仍然可用，同时仍能识别父目录被链接到外部的情况。
+//   - 父目录也不存在或解析失败：回退为原路径（后续文件操作本身会失败），
+//     由调用方按错误处理。
+func resolveReal(p string) (string, error) {
+	real, err := filepath.EvalSymlinks(p)
+	if err == nil {
+		return real, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	dir := filepath.Dir(p)
+	if dir == p {
+		// 已到根（如 "/"），没有更深的父级可解析。
+		return p, nil
+	}
+	realDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return p, nil
+		}
+		return "", err
+	}
+	return filepath.Join(realDir, filepath.Base(p)), nil
 }
 
 // ReadMeta 文件读取结果元信息。
@@ -95,10 +190,16 @@ type ReadMeta struct {
 	Size        int64  `json:"size"`
 	ModTime     string `json:"mtime"` // RFC3339Nano，用于冲突检测
 	Writable    bool   `json:"writable"`
+	// Encoding 内容编码："utf-8"（含 ASCII）或 "utf-8-bom"。
+	// 非 UTF-8 文件读取直接报错（ErrNotUTF8），不返回乱码。
+	Encoding string `json:"encoding,omitempty"`
 	// TooLarge 表示文件超过默认打开阈值，Content 为空，需前端确认后以 allowLarge 重取。
 	TooLarge bool `json:"tooLarge,omitempty"`
 	// Truncated 表示 Content 已被截断（仅返回了前 MaxPreviewBytes），应作只读预览。
 	Truncated bool `json:"truncated,omitempty"`
+	// LineEnding 行尾风格："lf" | "crlf" | "mixed" | ""（空文件/单行无换行）。
+	// 保存时按此回写，保持文件原有风格不被静默改写。
+	LineEnding string `json:"lineEnding,omitempty"`
 }
 
 // 大文件保护阈值。
@@ -116,6 +217,92 @@ type ErrTooLarge struct {
 
 func (e ErrTooLarge) Error() string {
 	return fmt.Sprintf("文件过大（%d 字节），需确认后以预览方式打开", e.Size)
+}
+
+// ErrNotUTF8 表示文件不是有效的 UTF-8 编码（如 GBK/GB18030、Latin-1 等）。
+// 编辑器不做静默转码（避免有损往返），由前端给出明确提示。
+type ErrNotUTF8 struct {
+	Path string
+}
+
+func (e ErrNotUTF8) Error() string {
+	return "文件不是 UTF-8 编码（当前仅支持 UTF-8/ASCII，GBK 等编码将在后续版本支持）: " + e.Path
+}
+
+// utf8BOM 是 UTF-8 字节序标记。
+var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
+
+// decodeText 把文件字节解码为文本：
+//   - 识别并剥离 UTF-8 BOM（meta.Encoding = "utf-8-bom"）；
+//   - 严格校验 UTF-8 合法性（utf8.Valid）；
+//   - 非 UTF-8 时尝试 GB18030（Windows「ANSI」在简体中文环境的实际代码页，
+//     GBK 的超集；对纯 ASCII 文件等同 UTF-8，不会误判）——转成 UTF-8 返回并
+//     标记 meta.Encoding = "gb18030"，保存时由 Write 转回原编码写盘；
+//   - GB18030 也解不了（如 Big5/Shift-JIS/二进制）返回 ErrNotUTF8，绝不静默乱码。
+func decodeText(data []byte, meta *ReadMeta) error {
+	if len(data) >= 3 && string(data[:3]) == string(utf8BOM) {
+		meta.Encoding = "utf-8-bom"
+		data = data[3:]
+	} else if utf8.Valid(data) {
+		meta.Encoding = "utf-8"
+	} else {
+		// ANSI（Windows 代码页）尝试：GB18030 覆盖 GBK/GB2312。
+		// 中文简体环境 NAS 上的 ANSI 文件几乎都源于此。
+		decoded, ok := decodeGB18030(data)
+		if !ok {
+			return ErrNotUTF8{Path: meta.Path}
+		}
+		meta.Encoding = "gb18030"
+		meta.Content = decoded
+		meta.LineEnding = detectLineEnding(decoded)
+		return nil
+	}
+	meta.Content = string(data)
+	meta.LineEnding = detectLineEnding(meta.Content)
+	return nil
+}
+
+// decodeGB18030 尝试按 GB18030 解码。解码失败（字节序列非法）返回 ok=false。
+// 注意：GB18030 几乎能解码任何字节流，严格性有限——但对「合法 UTF-8 已被
+// 排除」的字节流，解出的中文几乎总是用户期望的 ANSI 内容；且保存时转回
+// 同一编码，往返无损。
+func decodeGB18030(data []byte) (string, bool) {
+	dec := simplifiedchinese.GB18030.NewDecoder()
+	out, err := dec.Bytes(data)
+	if err != nil {
+		return "", false
+	}
+	return string(out), true
+}
+
+// encodeGB18030 把 UTF-8 文本编码回 GB18030 字节（保存 ANSI 文件时用）。
+func encodeGB18030(s string) ([]byte, error) {
+	enc := simplifiedchinese.GB18030.NewEncoder()
+	return enc.Bytes([]byte(s))
+}
+
+// detectLineEnding 识别行尾风格，保存时用于保持原文件风格。
+func detectLineEnding(s string) string {
+	var crlf, lf int
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			if i > 0 && s[i-1] == '\r' {
+				crlf++
+			} else {
+				lf++
+			}
+		}
+	}
+	switch {
+	case crlf > 0 && lf > 0:
+		return "mixed"
+	case crlf > 0:
+		return "crlf"
+	case lf > 0:
+		return "lf"
+	default:
+		return ""
+	}
 }
 
 // ReadOptions 控制 Read 的行为。
@@ -161,7 +348,9 @@ func Read(absPath string, opts ReadOptions) (*ReadMeta, error) {
 		if err != nil {
 			return nil, err
 		}
-		meta.Content = string(data)
+		if err := decodeText(data, meta); err != nil {
+			return nil, err
+		}
 		return meta, nil
 	}
 
@@ -173,7 +362,9 @@ func Read(absPath string, opts ReadOptions) (*ReadMeta, error) {
 	defer f.Close()
 	buf := make([]byte, MaxPreviewBytes)
 	n, _ := io.ReadFull(f, buf)
-	meta.Content = string(buf[:n])
+	if err := decodeText(buf[:n], meta); err != nil {
+		return nil, err
+	}
 	meta.Truncated = true
 	meta.Writable = false // 截断预览禁止保存，避免覆盖原始大文件
 	return meta, nil
@@ -184,28 +375,79 @@ type WriteRequest struct {
 	Path      string `json:"path"`
 	Content   string `json:"content"`
 	BaseMTime string `json:"baseMtime,omitempty"` // 客户端读取时的 mtime，用于冲突检测
+	// HasBOM 原文件带 UTF-8 BOM 时为 true，写回时保持（避免 BOM 静默丢失）。
+	HasBOM bool `json:"hasBom,omitempty"`
+	// Encoding 原文件编码（read 返回的 meta.encoding）。gb18030 文件保存时
+	// 转回 GB18030 写盘——文件在 NAS 上保持 ANSI 编码不变，仅编辑器内存
+	// 中是 UTF-8。空/"utf-8"/"utf-8-bom" 按 UTF-8 处理。
+	Encoding string `json:"encoding,omitempty"`
 }
 
-// Write 写入文件，带 mtime 冲突检测。
+// Write 写入文件：目标不存在时创建（「另存为」场景），存在时带 mtime 冲突检测。
+//
+// 安全边界由调用方（API 层）负责：授权目录 + symlink 校验、用户写 ACL。
+// 创建使用 0644；冲突检测仅对已存在文件生效（新文件无从冲突）。
 func Write(req WriteRequest) (newMTime string, err error) {
+	mode := os.FileMode(0o644)
+	creating := false
 	info, err := os.Stat(req.Path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return "", ErrNotFound
+		if !os.IsNotExist(err) {
+			return "", err
 		}
-		return "", err
+		creating = true
+	} else {
+		if info.IsDir() {
+			return "", fmt.Errorf("目标是目录而非文件: %s", req.Path)
+		}
+		mode = info.Mode().Perm()
+		// 冲突检测：若客户端携带 baseMtime 且与服务端当前 mtime 不一致，则拒绝写入。
+		if req.BaseMTime != "" {
+			current := info.ModTime().Format(time.RFC3339Nano)
+			if current != req.BaseMTime {
+				return "", ErrConflict
+			}
+		}
 	}
 
-	// 冲突检测：若客户端携带 baseMtime 且与服务端当前 mtime 不一致，则拒绝写入。
-	if req.BaseMTime != "" {
-		current := info.ModTime().Format(time.RFC3339Nano)
-		if current != req.BaseMTime {
-			return "", ErrConflict
+	// 编码与校验：内容必须为合法 UTF-8（前端不做转码，此处是最后防线）。
+	if !utf8.ValidString(req.Content) {
+		return "", fmt.Errorf("保存内容含非法 UTF-8 序列，已拒绝写入: %s", req.Path)
+	}
+	// 目标编码写盘：gb18030 文件转回 ANSI 编码（保持 NAS 上的原编码不变）；
+	// UTF-8 文件按 BOM 原则「不加不删」。
+	var out []byte
+	switch req.Encoding {
+	case "gb18030":
+		encoded, err := encodeGB18030(req.Content)
+		if err != nil {
+			return "", fmt.Errorf("转回 GB18030 编码失败: %w", err)
+		}
+		out = encoded
+	default:
+		out = []byte(req.Content)
+		if req.HasBOM {
+			out = append(utf8BOM, out...)
 		}
 	}
 
-	if err := os.WriteFile(req.Path, []byte(req.Content), info.Mode().Perm()); err != nil {
-		return "", err
+	if !creating {
+		if err := os.WriteFile(req.Path, out, mode); err != nil {
+			return "", err
+		}
+	} else {
+		// O_EXCL 防竞态覆盖（极小窗口内他人已创建则报错而非静默覆盖）。
+		f, err := os.OpenFile(req.Path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+		if err != nil {
+			return "", err
+		}
+		if _, err := f.Write(out); err != nil {
+			f.Close()
+			return "", err
+		}
+		if err := f.Close(); err != nil {
+			return "", err
+		}
 	}
 	newInfo, err := os.Stat(req.Path)
 	if err != nil {
@@ -266,9 +508,9 @@ func ListDir(dirPath string) ([]Entry, error) {
 
 // 搜索时的默认限制。
 const (
-	searchMaxResults   = 200              // 最多返回命中数
-	searchMaxFileSize  = 2 << 20          // 单文件 > 2MB 跳过（避免大文件卡顿）
-	searchMaxFileBytes = 200              // 文件名/路径显示截断
+	searchMaxResults   = 200     // 最多返回命中数
+	searchMaxFileSize  = 2 << 20 // 单文件 > 2MB 跳过（避免大文件卡顿）
+	searchMaxFileBytes = 200     // 文件名/路径显示截断
 )
 
 // isBinarySnippet 粗判前若干字节是否像二进制（含 NUL 或大量不可打印字符）。
@@ -290,16 +532,16 @@ func isBinarySnippet(b []byte) bool {
 
 // SearchHit 一次内容命中。
 type SearchHit struct {
-	Path  string `json:"path"`
-	Line  int    `json:"line"`   // 1-based 行号
-	Text  string `json:"text"`   // 命中行内容（截断）
+	Path string `json:"path"`
+	Line int    `json:"line"` // 1-based 行号
+	Text string `json:"text"` // 命中行内容（截断）
 }
 
 // SearchResult 搜索结果汇总。
 type SearchResult struct {
-	Hits    []SearchHit `json:"hits"`
-	FilesSearched int   `json:"filesSearched"`
-	Truncated bool      `json:"truncated"`
+	Hits          []SearchHit `json:"hits"`
+	FilesSearched int         `json:"filesSearched"`
+	Truncated     bool        `json:"truncated"`
 }
 
 // SearchInDir 在 dirPath 内递归搜索包含 query 的文本文件。
@@ -328,6 +570,13 @@ func SearchInDir(dirPath, query string) (*SearchResult, error) {
 			}
 			name := e.Name()
 			full := filepath.Join(dir, name)
+
+			// 跳过符号链接：DirEntry.IsDir() 基于 lstat，指向目录的软链会被当成
+			// 「文件」整份读入，从而把授权目录外的内容搜出来。搜索不跟随软链
+			// （与 rg/grep 默认行为一致），软链目标应由用户显式授权。
+			if e.Type()&os.ModeSymlink != 0 {
+				continue
+			}
 
 			// 跳过常见依赖 / 版本控制 / 隐藏目录。
 			if e.IsDir() {

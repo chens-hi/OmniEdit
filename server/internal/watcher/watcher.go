@@ -14,8 +14,8 @@ import (
 // Event 一次外部变更事件。
 type Event struct {
 	Path   string `json:"path"`
-	MTime  string `json:"mtime"`            // 新的 mtime（RFC3339Nano）
-	Reason string `json:"reason"`           // modified | deleted
+	MTime  string `json:"mtime"`  // 新的 mtime（RFC3339Nano）
+	Reason string `json:"reason"` // modified | deleted
 }
 
 // Watcher 轮询一组文件路径的 mtime。
@@ -56,6 +56,14 @@ func (w *Watcher) Unwatch(path string) {
 	w.mu.Lock()
 	delete(w.mtimes, path)
 	w.mu.Unlock()
+}
+
+// Watching 报告某文件当前是否处于监控中（供测试与状态诊断使用）。
+func (w *Watcher) Watching(path string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	_, ok := w.mtimes[path]
+	return ok
 }
 
 // Start 启动轮询循环（非阻塞）。重复调用无害。
