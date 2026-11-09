@@ -273,6 +273,7 @@ void lang;
               {{ item.type === 'checkbox' ? (item.checked?.() ? '✓' : '') : item.type === 'radio' ? (item.selected?.() ? '●' : '○') : '' }}
             </span>
             <span class="m-text">{{ item.label }}</span>
+            <span v-if="item.valueText" class="m-shortcut">{{ item.valueText() }}</span>
             <span v-if="item.shortcut" class="m-shortcut">{{ item.shortcut }}</span>
           </button>
         </template>
