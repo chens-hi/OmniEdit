@@ -164,6 +164,9 @@ const menus = computed<Menu[]>((): Menu[] => {
 
 const openMenu = ref<number | null>(null);
 const subOpen = ref<number | null>(null); // 当前展开的二级子菜单（父项 index）
+// keepOpen 计数：子菜单点击后不关闭面板（响应式触发重渲染以刷新 valueText/
+// selected），点击非循环项（如另一模式）或外部/Esc 时才关闭。
+const keepOpenCount = ref(0);
 const rootEl = ref<HTMLElement | null>(null);
 
 function toggleMenu(idx: number) {
@@ -232,7 +235,7 @@ void lang;
                     selected: child.type === 'radio' && child.selected?.(),
                   }"
                   :disabled="child.disabled?.()"
-                  @click.stop="child.action?.(); openMenu = null; subOpen = null"
+                  @click.stop="child.action?.(); keepOpenCount++; subOpen = iidx"
                 >
                   <span class="m-mark">{{ child.type === 'radio' ? (child.selected?.() ? '●' : '○') : '' }}</span>
                   <span class="m-text">{{ child.label }}</span>
