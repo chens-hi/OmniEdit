@@ -156,8 +156,17 @@ export function whitespacePlugin(getCfg: () => WhitespaceConfig) {
 /**
  * 符号样式（baseTheme 全局注入，scoped 样式够不到 CM 内部 DOM）。
  * 颜色全部走 styles.css 的主题变量（--ws-*），明暗主题自动切换。
+ *
+ * 关键（v0.4.6）：行尾 ¶/↩ widget 改为 **position:absolute 脱离文档流**。
+ * 此前的 width:0 + overflow:visible 方案中，溢出内容参与 CM 行宽测量——
+ * 折行测量把溢出符号当行内容，折点计算偏移（自动换行右侧大段空白）且
+ * 横向滚动条反复出现。absolute 元素不贡献 scrollWidth，测量恢复精确。
  */
 export const whitespaceTheme = EditorView.baseTheme({
+  // 折行/符号定位锚点：.cm-line 相对定位（absolute 符号的包含块）
+  '.cm-line': {
+    position: 'relative',
+  },
   // 空格：底色小点感（利用 background 圆点径向渐变，居中，不占额外宽度）
   '.cm-ws-space': {
     backgroundImage: 'radial-gradient(circle, var(--ws-dot-color) 1px, transparent 1.2px)',
@@ -172,14 +181,14 @@ export const whitespaceTheme = EditorView.baseTheme({
     backgroundPosition: 'left bottom',
     backgroundRepeat: 'no-repeat',
   },
-  // 行尾 ↵ / 软折行 ↩：零宽叠加，不参与文档流宽度
+  // 行尾 ↵ / 软折行 ↩：absolute 定位在行尾右侧 2px，脱离测量流
   '.cm-ls-mark': {
     color: 'var(--ws-mark-color)',
     pointerEvents: 'none',
-    display: 'inline-block',
-    width: '0',
-    overflow: 'visible',
-    whiteSpace: 'nowrap',
+    position: 'absolute',
+    whiteSpace: 'pre',
+    fontSize: '0.9em',
+    transform: 'translateX(2px)',
   },
   '.cm-ls-soft': {
     color: 'var(--ws-soft-color)',
