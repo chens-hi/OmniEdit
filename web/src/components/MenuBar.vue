@@ -67,9 +67,8 @@ function doExit() {
 
 /** 显示子菜单父项右侧的当前值摘要（有任一符号开启即显示"符号: 开"）。 */
 function displayValueText(): string {
-  const anyOn = store.showSpaces || store.showTabs || store.showLineBreaks;
-  if (anyOn) return t('showOn');
-  return store.showLineNumbers ? t('on') : t('off');
+  if (store.showSpaces || store.showTabs || store.showLineBreaks) return t('showOn');
+  return t('showOff');
 }
 
 // ---- 菜单定义 ----
@@ -127,7 +126,7 @@ const menus = computed<Menu[]>((): Menu[] => {
           children: [
             {
               type: 'radio',
-              label: `${t('menuLineNumbers')} — ${store.showLineNumbers ? t('on') : t('off')}`,
+              label: t('menuLineNumbers'),
               radioGroup: 'display',
               selected: () => store.showLineNumbers,
               action: () => store.setShowLineNumbers(!store.showLineNumbers),
@@ -135,21 +134,21 @@ const menus = computed<Menu[]>((): Menu[] => {
             { type: 'sep' },
             {
               type: 'radio',
-              label: `${t('showSpacesLabel')} — ${store.showSpaces ? t('showOn') : t('showOff')}`,
+              label: t('showSpacesLabel'),
               radioGroup: 'display',
               selected: () => store.showSpaces,
               action: () => store.setShowSpaces(!store.showSpaces),
             },
             {
               type: 'radio',
-              label: `${t('showTabsLabel')} — ${store.showTabs ? t('showOn') : t('showOff')}`,
+              label: t('showTabsLabel'),
               radioGroup: 'display',
               selected: () => store.showTabs,
               action: () => store.setShowTabs(!store.showTabs),
             },
             {
               type: 'radio',
-              label: `${t('showLineEndingsLabel')} — ${store.showLineBreaks ? t('showOn') : t('showOff')}`,
+              label: t('showLineEndingsLabel'),
               radioGroup: 'display',
               selected: () => store.showLineBreaks,
               action: () => store.setShowLineBreaks(!store.showLineBreaks),
