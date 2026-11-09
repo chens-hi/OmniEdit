@@ -32,6 +32,10 @@ interface MenuItem {
   action?: () => void;
   radioGroup?: string;
   radioValue?: unknown;
+  /** 二级子菜单：父项悬停展开右侧弹层 */
+  children?: MenuItem[];
+  /** 父项右侧的动态值（如缩进当前宽度） */
+  valueText?: () => string;
 }
 
 interface Menu {
@@ -110,29 +114,39 @@ const menus = computed<Menu[]>((): Menu[] => {
         { type: 'checkbox', label: t('menuLineNumbers'), checked: () => store.showLineNumbers, action: () => store.setShowLineNumbers(!store.showLineNumbers) },
         { type: 'sep' },
         {
-          // 缩进：点击 = 空格宽度循环 2→4→8→2；Tab 模式时点击先切回空格 2。
-          type: 'radio',
-          label: `${t('menuIndentSize')}: ${store.indentMode === 'spaces' ? store.indentWidth : t('menuTab') + ' 4'}`,
-          radioGroup: 'indent',
-          selected: () => store.indentMode === 'spaces',
-          action: () => store.cycleIndentWidth(),
-        },
-        {
-          // 制表符：点击切 Tab 模式（固定 4）。
-          type: 'radio',
-          label: t('menuTab'),
-          radioGroup: 'indent',
-          selected: () => store.indentMode === 'tabs',
-          action: () => store.setIndentMode('tabs', 4),
+          // 缩进 ▸ 空格（点击循环 2→4→8→2）/ 制表符（固定 4）
+          type: 'item',
+          label: t('menuIndent'),
+          valueText: () => (store.indentMode === 'spaces' ? `${store.indentWidth}` : t('menuIndentTabFixed')),
+          children: [
+            {
+              type: 'radio',
+              label: t('menuIndentSpacesCycle'),
+              radioGroup: 'indent',
+              selected: () => store.indentMode === 'spaces',
+              action: () => store.cycleIndentWidth(),
+            },
+            {
+              type: 'radio',
+              label: t('menuIndentTabFixed'),
+              radioGroup: 'indent',
+              selected: () => store.indentMode === 'tabs',
+              action: () => store.setIndentMode('tabs', 4),
+            },
+          ],
         },
         { type: 'sep' },
         {
-          // 字体：点击循环 12→14→16→18→12。selected 必须是函数（模板统一 item.selected?.() 调用）。
-          type: 'radio',
-          label: `${t('menuFontSizeItem')}: ${store.fontSize}`,
-          radioGroup: 'font',
-          selected: () => true,
-          action: () => store.cycleFontSize(),
+          // 字体 ▸ 12/14/16/18 单选
+          type: 'item',
+          label: t('menuFont'),
+          valueText: () => `${store.fontSize}`,
+          children: [
+            { type: 'radio', label: '12', radioGroup: 'font', selected: () => store.fontSize === 12, action: () => store.setFontSize(12) },
+            { type: 'radio', label: '14', radioGroup: 'font', selected: () => store.fontSize === 14, action: () => store.setFontSize(14) },
+            { type: 'radio', label: '16', radioGroup: 'font', selected: () => store.fontSize === 16, action: () => store.setFontSize(16) },
+            { type: 'radio', label: '18', radioGroup: 'font', selected: () => store.fontSize === 18, action: () => store.setFontSize(18) },
+          ],
         },
       ],
     },
@@ -149,10 +163,12 @@ const menus = computed<Menu[]>((): Menu[] => {
 // ---- 展开状态与交互 ----
 
 const openMenu = ref<number | null>(null);
+const subOpen = ref<number | null>(null); // 当前展开的二级子菜单（父项 index）
 const rootEl = ref<HTMLElement | null>(null);
 
 function toggleMenu(idx: number) {
   openMenu.value = openMenu.value === idx ? null : idx;
+  subOpen.value = null;
 }
 
 function onMenuEnter(idx: number) {
@@ -194,6 +210,37 @@ void lang;
       <div v-if="openMenu === idx" class="m-drop">
         <template v-for="(item, iidx) in menu.items" :key="iidx">
           <div v-if="item.type === 'sep'" class="m-sep" />
+          <div
+            v-else-if="item.children"
+            class="m-item m-has-sub"
+            @mouseenter="subOpen = iidx"
+            @mouseleave="subOpen = null"
+          >
+            <span class="m-mark">{{ item.selected?.() ? '●' : '' }}</span>
+            <span class="m-text">{{ item.label }}</span>
+            <span v-if="item.valueText" class="m-shortcut">{{ item.valueText() }}</span>
+            <span class="m-arrow">▸</span>
+            <div v-if="subOpen === iidx" class="m-subdrop">
+              <template v-for="(child, cidx) in item.children" :key="cidx">
+                <div v-if="child.type === 'sep'" class="m-sep" />
+                <button
+                  v-else
+                  class="m-item"
+                  :class="{
+                    disabled: child.disabled?.(),
+                    radio: child.type === 'radio',
+                    selected: child.type === 'radio' && child.selected?.(),
+                  }"
+                  :disabled="child.disabled?.()"
+                  @click.stop="child.action?.(); openMenu = null; subOpen = null"
+                >
+                  <span class="m-mark">{{ child.type === 'radio' ? (child.selected?.() ? '●' : '○') : '' }}</span>
+                  <span class="m-text">{{ child.label }}</span>
+                  <span v-if="child.shortcut" class="m-shortcut">{{ child.shortcut }}</span>
+                </button>
+              </template>
+            </div>
+          </div>
           <button
             v-else
             class="m-item"
@@ -274,4 +321,21 @@ void lang;
 .m-shortcut { color: #888; font-size: 11px; }
 
 .m-sep { height: 1px; background: var(--border); margin: 4px 8px; }
+
+/* 二级子菜单 */
+.m-has-sub { position: relative; cursor: pointer; }
+.m-has-sub:hover { background: rgba(255, 255, 255, 0.08); }
+.m-arrow { color: #888; font-size: 11px; margin-left: 4px; }
+.m-subdrop {
+  position: absolute;
+  top: -5px;
+  left: 100%;
+  min-width: 170px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  padding: 4px;
+  z-index: 70;
+}
 </style>
