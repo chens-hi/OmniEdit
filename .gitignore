@@ -5,10 +5,20 @@ server/*.exe
 # Node / 前端
 node_modules/
 web/dist/
+web/tsconfig.tsbuildinfo
 app/dist/
+
+# 后端构建产物（build.ps1 输出到 app/，均为可再生成的二进制）
+app/omniedit
+app/omniedit-amd64
+app/omniedit-arm64
+app/omniedit.exe
 
 # 打包产物
 *.fpk
+
+# 本地打包工具（fnpack 二进制，体积大且按机器/平台分发，不入库）
+tools/
 
 # 构建输出
 build/

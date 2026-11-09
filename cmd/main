@@ -6,7 +6,23 @@
 set -u
 
 # 应用运行文件目录（target -> /vol{n}/@appcenter/{appname}）
+# 多架构策略：包内同时放入 omniedit-amd64 / omniedit-arm64，
+# 由本脚本按当前机器架构选择（见 ARCHITECTURE.md 风险 #4）。
+detect_arch_bin() {
+  local arch
+  arch=$(uname -m 2>/dev/null || echo unknown)
+  case "$arch" in
+    x86_64|amd64) echo "omniedit-amd64" ;;
+    aarch64|arm64) echo "omniedit-arm64" ;;
+    *) echo "" ;;
+  esac
+}
+
 APP_BIN="${TRIM_APPDEST}/omniedit"
+_sel=$(detect_arch_bin)
+if [ -n "$_sel" ] && [ -f "${TRIM_APPDEST}/$_sel" ]; then
+  APP_BIN="${TRIM_APPDEST}/$_sel"
+fi
 APP_STATIC="${TRIM_APPDEST}/dist"
 APP_SOCK="${TRIM_APPDEST}/app.sock"
 # 持久化运行数据目录（var -> @appdata）
