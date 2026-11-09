@@ -47,15 +47,16 @@
 - [x] 语法高亮（JSON / Markdown / HTML / XML / Go / C#）/ Syntax highlighting
 - [x] Markdown 编辑与预览 / Markdown editing & preview
 - [x] 多标签页 / Multi-tab
-- [x] 目录浏览（授权目录内）/ Directory browsing
-- [x] 全局搜索（授权目录内内容搜索）/ Global search
+- [x] 记事本形态：无目录侧栏，纯编辑窗口 / Notepad-style: no file browser, editor only
+- [x] 无标题草稿 + 另存为（宿主选目录/文件名）/ Untitled docs + Save As via host picker
+- [x] 右键打开未授权文件 → 自动请求宿主授权后重试 / Auto authorization on 403
 - [x] 文件保存冲突检测 / Save conflict detection
 - [x] 主题跟随宿主（深/浅色）/ Theme following host
 - [x] 语言跟随宿主（中/英文 i18n）/ Language following host
 - [x] 大文件保护（>5MB 只读预览）/ Large-file protection
-- [x] 外部变更检测（WebSocket 推送 + 自动刷新/提示）/ External-change detection
+- [x] 外部变更检测（WebSocket 推送，按用户隔离）/ External-change detection
 - [x] 本地调试模式（无需 NAS）/ Local debug mode
-- [ ] 主题实时变化监听 / Live theme-change listener
+- [x] 主题/语言实时跟随宿主（SDK `os/theme` / `os/language` 事件）/ Live theme & language sync
 - [ ] Office（docx/xlsx/pptx）/ Office formats
 
 ---

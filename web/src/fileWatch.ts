@@ -26,7 +26,7 @@ function wsUrl(): string {
 
 async function handleChange(path: string, mtime: string) {
   const store = useEditorStore();
-  const tab = store.tabByPath(path);
+  const tab = store.tabs.find(tb => tb.path === path);
   if (!tab) return; // 未打开：忽略
 
   if (!tab.dirty) {

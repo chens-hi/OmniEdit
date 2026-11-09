@@ -2,7 +2,6 @@
   --bg: #1e1e1e;
   --fg: #d4d4d4;
   --toolbar-bg: #252526;
-  --sidebar-bg: #1a1a1b;
   --border: #333;
   --accent: #4a9eff;
   --error: #f66;
@@ -13,7 +12,6 @@ html[data-theme="light"] {
   --bg: #ffffff;
   --fg: #24292e;
   --toolbar-bg: #f3f4f6;
-  --sidebar-bg: #f9fafb;
   --border: #e1e4e8;
   --accent: #0969da;
   --error: #cf222e;
@@ -99,65 +97,6 @@ body,
   min-height: 0;
 }
 
-.sidebar {
-  width: 220px;
-  background: var(--sidebar-bg);
-  border-right: 1px solid var(--border);
-  overflow-y: auto;
-  flex-shrink: 0;
-  padding: 6px 4px;
-}
-
-.sidebar-title {
-  padding: 4px 8px;
-  font-size: 11px;
-  text-transform: uppercase;
-  color: #888;
-  letter-spacing: 0.5px;
-}
-
-.sidebar-tabs {
-  display: flex;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.sidebar-tab {
-  flex: 1;
-  padding: 7px 0;
-  border: none;
-  background: transparent;
-  color: #888;
-  font-size: 12px;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-}
-
-.sidebar-tab:hover { color: var(--fg); }
-
-.sidebar-tab.active {
-  color: var(--fg);
-  border-bottom-color: var(--accent);
-}
-
-.sidebar-page {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.sidebar-tree {
-  padding: 2px 0;
-}
-
-.sidebar-hint {
-  padding: 8px;
-  color: #666;
-  font-size: 12px;
-}
-
 .main {
   flex: 1;
   display: flex;
@@ -227,14 +166,177 @@ body,
 /* ---------- 状态栏 ---------- */
 .statusbar {
   display: flex;
-  gap: 16px;
+  align-items: center;
+  gap: 12px;
+  min-height: 24px;
   padding: 4px 12px;
   background: var(--toolbar-bg);
   border-top: 1px solid var(--border);
   font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
   flex-shrink: 0;
+}
+
+/* 左侧：路径（可溢出省略，title 悬浮看全文） */
+.sb-path {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg);
+  opacity: 0.75;
+}
+
+/* 右侧：信息项组 */
+.sb-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.sbi {
+  color: #888;
+  font-variant-numeric: tabular-nums; /* 等宽数字：行列/大小变化不跳动 */
+}
+
+/* 合并项内光标段：比行数段弱一层（高频跳动部分视觉最轻） */
+.sbi .dim {
+  color: #666;
+}
+
+/* ---------- 搜索浮窗（@codemirror/search createPanel 定制） ---------- */
+
+/* 面板容器：官方默认是顶部横贯条，这里改为右上角悬浮卡片 */
+.cm-panels.cm-panels-top {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  left: auto;
+  z-index: 30;
+  background: transparent;
+  border: none;
+}
+
+.cm-panels .omni-search {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 380px;
+  padding: 10px 12px;
+  background: var(--toolbar-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.omni-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.omni-input {
+  flex: 1;
+  min-width: 140px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12px;
+  outline: none;
+}
+.omni-input:focus { border-color: var(--accent); }
+
+.omni-nav, .omni-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.omni-sbtn {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.omni-sbtn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* toggle 芯片：激活态 accent 描边 */
+.omni-sbtn.omni-toggle[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.omni-close { font-size: 13px; }
+
+.omni-count {
+  min-width: 48px;
+  text-align: right;
+  font-size: 11px;
+  color: #888;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+/* 匹配高亮：统一到主题 accent（默认配色与深色主题不符） */
+.cm-searchMatch {
+  background: rgba(255, 200, 87, 0.25);
+  outline: 1px solid rgba(255, 200, 87, 0.5);
+}
+.cm-searchMatch-selected { background: rgba(255, 152, 0, 0.45); }
+
+/* ANSI 编码徽标：需要用户留意的转码语义 */
+.sbi.badge {
+  padding: 0 8px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  font-size: 11px;
+  color: var(--accent);
+}
+
+.sbsep {
+  width: 1px;
+  height: 12px;
+  background: var(--border);
 }
 
 .error {
   color: var(--error);
 }
+
+/* ---------- 菜单模态（关于/快捷键） ---------- */
+.mmodal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 110;
+}
+.mmodal {
+  width: 360px;
+  max-width: calc(100vw - 40px);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  padding: 16px 20px;
+  text-align: center;
+}
+.mmodal-title { font-size: 15px; font-weight: 600; color: var(--fg); margin-bottom: 10px; }
+.mmodal-body { font-size: 12px; color: var(--fg); margin-bottom: 14px; }
+.mmodal-body .dim { color: #888; margin-top: 4px; }
+.mmodal-body.shortcuts { text-align: left; }
+.mmodal-body.shortcuts div {
+  display: flex; justify-content: space-between;
+  padding: 4px 0; border-bottom: 1px dashed var(--border);
+}
+.mmodal-body.shortcuts span { color: var(--accent); font-family: Consolas, monospace; }

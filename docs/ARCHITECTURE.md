@@ -330,30 +330,55 @@ esac
 1. 用户在文件管理器右键 .md → 选择 OmniEdit
 2. fnOS 打开 iframe：/app/omniedit?path=/vol1/.../note.md
 3. 前端解析 path，调用后端 API：GET /app/omniedit/api/file/read?path=...
-4. 后端：
-   a. 标准化 path，拒绝目录穿越（..）
-   b. 校验 path 在已授权目录内（开放 API：授权查询）
-   c. 校验当前用户对该 path 可读（开放 API：trim.file.userAcl）
-   d. 读取文件内容，返回 { content, encoding, size, mtime }
-5. 前端根据扩展名选择 CodeMirror 语言模式，渲染编辑器
-6. 用户编辑 → 点击保存
-7. 前端：PUT /app/omniedit/api/file/write  { path, content, baseMtime }
-8. 后端：
-   a. 再次校验授权 + 用户可写 ACL
-   b. 冲突检测（mtime 不一致则拒绝，返回 409）
-   c. 写入文件，返回新 mtime
+4. 后端：标准化 path（拒绝穿越）→ 读取文件 → 返回 { content, size, mtime }
+5. 用户编辑 → Ctrl+S
+6. 前端：POST /app/omniedit/api/file/write { path, content, baseMtime, encoding, hasBom }
+7. 后端：冲突检测（409）→ 写入（保持原编码/BOM）→ 重设 watcher 基线
+   （自己的保存不触发外部变更推送）
 ```
 
-### 6.2 授权目录获取（首次使用）
+### 6.1b 记事本形态：桌面图标直开 = 空白编辑窗口
 
 ```
-1. 前端检测无授权目录
+1. 桌面图标打开 /app/omniedit（无 path 参数）→ 前端新建「无标题」标签
+2. 用户输入 → Ctrl+S：无 path → 另存为流程：
+   a. JS SDK pickUserFile({ directory:true }) 拉起宿主目录选择器
+      （选中即把该目录授权给应用——后续读写边界天然满足）
+   b. 应用内输入文件名 → 拼出绝对路径
+   c. POST write（baseMtime 空、文件不存在 → 后端在授权目录内创建）
+   d. 标签绑定真实路径与 mtime；后续 Ctrl+S 直存
+3. 界面为纯编辑窗口（类记事本）：无目录树/文件浏览/搜索侧栏
+```
+
+### 6.1c 编码与行尾策略
+
+```
+读取：
+  - 识别并剥离 UTF-8 BOM（meta.encoding = "utf-8-bom"），内容经 utf8.Valid 严格校验；
+  - 非 UTF-8（GBK/GB18030/Latin-1 等）直接报 ErrNotUTF8 拒绝打开——绝不静默产生
+    乱码；前端展示明确提示（后续版本可评估引入 golang.org/x/text 转码）；
+  - 识别行尾风格（lf/crlf/mixed）随 meta 返回（前端暂不使用，预留）。
+保存：
+  - 内容必须为合法 UTF-8（后端最后防线，非法序列拒绝写入）；
+  - BOM 原则「不加不删」：新文件/另存为一律 UTF-8 NoBOM；原文件带 BOM 则保持
+    （HasBOM 回写），避免静默改写依赖 BOM 的文件（与 VS Code 行为一致）。
+```
+
+### 6.2 授权目录获取（历史方案，v0.2.0 起已移除）
+
+> 权限模型改为 root 直读（见 §7），授权目录/403 自动授权闭环已整体移除。
+> `pickUserFile` 仅保留「另存为选位置」的 UI 用途，不再承载授权语义。
+
+```
+1. 触发场景：右键打开的文件返回 403，或用户「另存为」尚无授权
 2. 通过 JS SDK：
-   - 宿主内（isStandaloneWeb=false）：sdk.pickUserFile({ directory:true })
-   - 独立浏览器（isStandaloneWeb=true）：sdk.openAppAuth('pickUserFile', {...})
+   - 403 恢复：sdk.authorizeUserFile(path)（失败再尝试其父目录）
+   - 另存为：sdk.pickUserFile({ directory:true }) 选保存位置（选中即授权）
+   - 独立浏览器（isStandaloneWeb=true，本地 dev）：prompt 输入路径降级，
+     配合 --dev-root 圈定范围
 3. 用户选择并确认 → 返回本次授权结果
-4. 后端同步授权状态（开放 API 查询授权路径）
-5. 前端刷新可访问目录树
+4. 前端 POST /api/auth/refresh 失效后端该用户的授权缓存
+5. 重试原操作（读取/写入），编辑器不感知授权细节
 ```
 
 > 授权建议结合统一网关，保证应用页面与授权回调页同域，回调可用 `postMessage` 安全通知原页面。
@@ -362,15 +387,25 @@ esac
 
 ## 7. 安全模型
 
+**权限模型决策（v0.2.0，对齐同类编辑器与系统行为）**：后端以 `run-as: root` 运行，**不做用户级权限检查**——root 能读即返回。决策依据（真机三轮迭代后的最终结论）：
+
+1. fnOS 文件管理器对普通用户**不隔离**其他用户目录（除管理员），系统层面本无此墙，应用层重复建设无意义；
+2. 官方 `checkUserACL` 服务实测把 execute 位绑进"可读"判定——属主本人对 600（rw-------）文件被判 `readable=false`（700 放行），与 POSIX 语义和用户直觉均不符；先后尝试授权目录模型、checkUserACL 严格闸门、自研 POSIX 位评估三层方案，均引入新的不一致；
+3. 同类 fnOS 编辑器（万能编辑器 all.editor v2.0.2，同为 `run-as: root`）即此模型，`file.js` 仅做 `..` 字符串替换后直读。
+
 | 层面 | 措施 |
 |------|------|
-| **访问入口** | 仅通过统一网关暴露，复用 NAS 登录态，无独立公网端口 |
-| **身份可信** | 用户身份只信网关 Header（`X-Trim-*`），**不信任客户端传入的 userId** |
-| **路径安全** | 标准化路径、拒绝 `..` 穿越、只在授权目录内读写、拒绝暴露密钥/配置/私有日志 |
-| **用户权限** | 应用用户 ACL ≠ 当前用户权限；读写前用 `trim.file.userAcl` 校验当前用户权限 |
-| **Token** | `TRIM_API_TOKEN` 只在后端进程内读取，不落盘、不进前端、不持久化 |
-| **业务鉴权** | 网关只校验登录，业务权限（谁能改哪个文件）由应用自己执行 |
-| **WebSocket** | 建立时绑定 `X-Trim-Userid`，不信任消息体内 userId |
+| **访问入口** | 仅通过统一网关暴露（app.sock），无独立公网端口（对照：all.editor 另绑 0.0.0.0:15777） |
+| **路径安全** | 标准化路径、拒绝独立 `..` 段穿越（all.editor 为可绕过的字符串替换）、`EvalSymlinks` 解析真实路径；合法文件名中的 `..` 不误伤 |
+| **写保护** | mtime 冲突检测（409）；创建用 O_EXCL 防竞态覆盖 |
+| **大文件保护** | >5MB 拒绝打开，确认后 256KB 只读截断预览 |
+| **Token** | `TRIM_API_TOKEN` 每次调用从进程环境变量读取，不落盘、不进前端、不持久化 |
+| **WebSocket** | 建立时绑定 `X-Trim-Userid`，file-changed 事件只推给打开该文件的会话（体验细节：避免把 A 打开的文件路径推给 B 的页面），不信任消息体内身份 |
+| **启动诊断** | 启动日志打印 uid/euid 与 `TRIM_RUN_USERNAME`（privilege 文档「运行用户检查」），真机可确认 root 是否实际生效 |
+
+**审核问询口径**：文件编辑器核心价值是访问文件；fnOS 系统行为与同类编辑器均无用户级文件隔离；本应用入口仅统一网关同域（无独立端口），穿越/冲突/大文件防护齐备，且代码量（~1200 行 Go）远小于同类，攻击面可控。
+
+**Scope 与 root 的关系（实测踩坑）**：un-as: root 只决定文件系统访问；**JS SDK 宿主能力（pickUserFile 等）仍按应用包声明的 api-scope 准入**——v0.2.1 曾删掉 	rim.file.userAccess 导致选择器报 1003103「应用鉴权异常」。两套闸门独立，缺一不可。
 
 ---
 
@@ -402,23 +437,22 @@ esac
 - [x] 初始化 `web/`（Vue3+Vite+TS+CodeMirror6）、`server/`（Go）、`manifest`、`ui/config`、`cmd/*`
 - [x] Go 服务监听 Unix Socket + 托管静态产物跑通
 - [x] 本地 HTTP 调试模式（`--http` + `--dev-root`），无需 NAS 即可端到端联调
-- [ ] fnpack 打包 → appcenter-cli 装到测试机 → 桌面图标能打开空白编辑器（**需真实 NAS**）
+- [x] fnpack 打包 → 装到真机 → 桌面图标能打开编辑器界面（**真机已验证**）
 
 ### M1 · 可编辑保存（MVP）
-- [ ] 授权目录获取（JS SDK）（**需真实 NAS 联调**；本地用 `--dev-root` 模拟）
-- [x] 文件读取 / 保存 API + 冲突检测（mtime 409）
-- [x] 目录列表 API（`/api/dir/list`）+ 授权根目录 API（`/api/dir/roots`）
+- [x] 授权目录获取：后端按用户开放 API 查询（authcache）+ 前端 403 自动授权闭环 / Save-As 宿主目录选择器（**需真机联调确认宿主语义**）
+- [x] 文件读取 / 保存 API + 冲突检测（mtime 409）+ 新文件创建（另存为）
 - [x] 纯文本 + JSON + Markdown + HTML + XML + Go + C# 高亮
-- [x] 多标签页（Pinia store 管理状态）
+- [x] 多标签页（Pinia store 管理状态，含无标题草稿）
 
 ### M2 · 体验完善
 - [x] Markdown 分屏预览（marked + DOMPurify 防 XSS）
-- [x] 目录树浏览（授权目录内，递归懒加载）
-- [x] 全局搜索（授权目录内搜文件内容，跳过二进制/大文件/依赖目录）
 - [x] 主题跟随宿主（启动读 `getPlatformConfig().theme`，CSS 变量 + CodeMirror 热切换）
 - [x] 语言跟随宿主（i18n，启动读 `getPlatformConfig().language`，内置 zh/en 文案）
 - [x] 大文件优化（>5MB 默认拒绝返回内容，确认后以只读截断预览打开，禁编辑/保存）
-- [ ] 主题实时变化监听（待官方公开主题变化事件名，当前仅启动读取一次）
+- [x] 文件监听 + WebSocket 推送外部变更（轮询 mtime + 标准库 WS，按用户隔离；外部改动自动刷新/弹确认）
+- [x] 主题/语言实时监听（官方 SDK 事件 `os/theme` / `os/language`，已接入 `$on`）
+- ~~目录树浏览 / 全局搜索~~：**已按产品决策移除**（记事本形态，纯编辑窗口；`files.ListDir/SearchInDir` 内部保留，HTTP 面不暴露）
 
 ### M3 · 进阶
 - [ ] Office 预览/编辑（引入 OnlyOffice/Collabora 或自研轻量解析，**决策见风险项**）
@@ -431,13 +465,13 @@ esac
 
 | # | 项 | 说明 | 处理 |
 |---|-----|------|------|
-| 1 | **Go 运行时依赖** | 官方「运行时环境」页只列了 Python/Node.js/Java 作为可打包运行时，未提及 Go。但 Go 是**编译型**，产物为静态二进制，理论上无需 NAS 安装运行时。 | **部分去风险**：本地已验证 `CGO_ENABLED=0` 交叉编译 linux/amd64+arm64 通过、纯标准库零依赖。仍待实测：静态 Go 二进制在 fnOS 真机上可直接运行；若不行，回退到 Node.js 后端。 |
-| 2 | **文件打开方式与授权的衔接** | 右键打开文件时 fnOS 追加 `path`，但该 path 未必在应用已授权目录内。应用用户 ACL 与当前用户 ACL 的授予时机需明确。 | **待真机联调**：需验证「右键打开文件」是否自动授予应用用户 ACL，或需引导用户补授权。本地用 `--dev-root` 模拟授权，无法覆盖此场景。 |
+| 1 | **Go 运行时依赖** | 官方「运行时环境」页只列了 Python/Node.js/Java 作为可打包运行时，未提及 Go。但 Go 是**编译型**，产物为静态二进制，理论上无需 NAS 安装运行时。 | **已去风险（真机实测）**：本地 `CGO_ENABLED=0` 交叉编译 linux/amd64+arm64 通过；`.fpk` 已安装至真实 fnOS 设备，桌面图标可正常打开编辑器界面，静态 Go 二进制可在 NAS 直接运行确认，**无需回退 Node.js 后端**。 |
+| 2 | **文件打开方式与授权的衔接** | 右键打开文件时 fnOS 追加 `path`，但该 path 未必在应用已授权目录内。 | **已随权限模型移除而消解**（v0.2.0 root 直读，见 §7）：任何路径文件均可打开，无授权衔接问题。 |
 | 3 | **统一网关静态资源路径** | 前端构建产物的 base 路径需匹配 `/app/omniedit`，避免资源 404。 | **已验证并修复**：Vite `base:'/app/omniedit/'`；本地 HTTP 调试暴露并修复了 `spaHandler` 用 `FileServer`（按含前缀 URL 查找）导致的 404/错误 Content-Type bug，改用 `http.ServeFile` 按本地路径精确提供，全部 chunk 已验证 200 + `text/javascript`。 |
-| 4 | **多架构打包** | `platform=all` 与含架构二进制的关系。 | 用 fnpack 实测打包策略（**需真机/fnpaack CLI**）。 |
+| 4 | **多架构打包** | `platform=all` 与含架构二进制的关系。 | **已去风险（本地实测）**：包内同时放入 `omniedit-amd64` + `omniedit-arm64`，由 `cmd/main` 按 `uname -m` 选择；fnpack 1.2.3 本机成功产出 `.fpk`（`build.ps1 -AllArch -Pack`），包结构已拆解核验。仍待真机确认：所选二进制可正常执行（风险 #1）。 |
 | 5 | **Office 编辑（M3）** | 工作量与资源占用极大。 | 首版明确不做；M3 再评估 OnlyOffice 集成 vs 轻量自研。 |
 | 6 | **fnpack / appcenter-cli 具体命令** | CLI 细节未在本地展开。 | 构建/打包脚本（`server/build.ps1`）已就绪，`-Pack` 调用 fnpack；实际打包安装**需真机 + 官方 CLI**。 |
-| 7 | **主题实时变化监听** | JS SDK `$on` 需具体事件名，压缩代码中未公开 `themeChange` 事件名。 | 当前仅启动时读一次 `getPlatformConfig().theme`；实时跟随待拿到官方事件名后补充。 |
+| 7 | **主题实时变化监听** | JS SDK `$on` 事件名。 | **已解决**：官方 SDK README（Host Events）公开 `os/theme` / `os/language`，前端已接入实时监听；真机确认可即关闭。 |
 
 ---
 

@@ -107,14 +107,19 @@ go run . `
 
 **仅限本地开发，生产环境禁止开启这三个参数。** 生产环境授权目录由开放 API 查询后注入，用户级 ACL 必须校验。
 
-验证链路（以授权目录内某个文件为例）：
+验证链路（以 `--dev-root` 目录内某个文件为例；记事本形态无目录接口）：
 
 ```powershell
 # 读取
 Invoke-WebRequest "http://127.0.0.1:8899/app/omniedit/api/file/read?path=<文件绝对路径>"
 # 保存（带 baseMtime 做冲突检测，外部改动过会返回 409）
 Invoke-WebRequest "http://127.0.0.1:8899/app/omniedit/api/file/write" -Method Post -Body '{"path":"<文件>","content":"...","baseMtime":"<读到的 mtime>"}' -ContentType "application/json"
+# 另存为（baseMtime 传空串 + 不存在的目标路径 = 在 dev-root 内创建新文件）
+Invoke-WebRequest "http://127.0.0.1:8899/app/omniedit/api/file/write" -Method Post -Body '{"path":"<dev-root 内新路径>","content":"...","baseMtime":""}' -ContentType "application/json"
 ```
+
+> 另存为的 UI 流（宿主目录选择器）在浏览器打开 `/app/omniedit/` 时走 prompt 降级；
+> 真机上由 `pickUserFile({directory:true})` 拉起宿主选择器，选中目录自动获得授权。
 
 前端开发热更：
 
@@ -157,12 +162,23 @@ vendor chunk 命中缓存，不必重新下载。
 pwsh ./server/build.ps1 -AllArch -Pack
 ```
 
-`-Pack` 会在构建后调用 `fnpack` 生成 `.fpk` 包。
+`-Pack` 会在构建后调用 `fnpack` 生成 `.fpk`（产物在 `build/omniedit.fpk`）。
+本机已用 fnpack 1.2.3 实测跑通，以下坑点均为实测结论，构建脚本已全部处理：
+
+| 坑 | 实测行为 | 脚本对策 |
+|----|----------|----------|
+| **不能直接对仓库根打包** | fnpack 整体复制 `-d` 目录，`web/node_modules`（pnpm 软链接）触发 `Incorrect function` 失败 | 构造 `build/pkg` staging，只放 manifest、cmd、config、app/{ui,dist,二进制} |
+| **失败退出码仍为 0** | `Packing failed.` 打印到 stdout 但 exit 0，`$LASTEXITCODE` 判断无效 | 以 staging 内是否产出 `.fpk` 判定成败 |
+| **根目录必须有 ICON.PNG / ICON_256.PNG** | 缺失报 `Required file ICON.PNG is missing` | 从 `ui/images` 复制生成到 staging，不入库 |
+| **`config/privilege` 必须是 JSON** | 带 `#` 注释的文本会报 `Parse privilege file ... invalid character '#'` | 仓库内已改为官方 JSON 格式（`run-as: package`） |
+| **桌面 UI 位于 `app/ui`** | 根目录 `ui/` 报 `app\ui: cannot find the file`；manifest `desktop_uidir` 相对 app 解析 | staging 把 `ui/` 放入 `app/ui` |
+
+> fnpack 会向 staging 的 `manifest` 追加 `checksum` 字段（不影响仓库内文件）。
 
 安装到测试机：
 
 ```powershell
-appcenter-cli install ./OmniEdit.fpk
+appcenter-cli install ./build/omniedit.fpk
 ```
 
 ---

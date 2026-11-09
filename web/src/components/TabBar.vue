@@ -9,15 +9,16 @@ const store = useEditorStore();
   <div class="tabbar">
     <div
       v-for="tab in store.tabs"
-      :key="tab.path"
+      :key="tab.id"
       class="tab"
-      :class="{ active: tab.path === store.activePath }"
-      @click="store.activePath = tab.path"
+      :class="{ active: tab.id === store.activeId }"
+      @click="store.activeId = tab.id"
     >
       <span class="tab-name">{{ tab.name }}</span>
       <span v-if="tab.dirty" class="tab-dirty" :title="t('unsaved')">●</span>
-      <span class="tab-close" :title="t('close')" @click.stop="store.closeTab(tab.path)">×</span>
+      <span class="tab-close" :title="t('close')" @click.stop="store.closeTab(tab.id)">×</span>
     </div>
+    <button class="tab-new" :title="t('newFile')" @click="store.newUntitled()">＋</button>
   </div>
 </template>
 
@@ -53,4 +54,13 @@ const store = useEditorStore();
   color: #888;
 }
 .tab-close:hover { background: rgba(255, 255, 255, 0.1); color: var(--fg); }
+.tab-new {
+  border: none;
+  background: transparent;
+  color: #aaa;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.tab-new:hover { color: var(--fg); }
 </style>
