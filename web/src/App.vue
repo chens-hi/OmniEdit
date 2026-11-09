@@ -222,8 +222,10 @@ const lineEndingLabel = computed(() => {
 const indentLabel = computed(() => {
   // 显示**用户设置**（菜单切换的值），与编辑器实际缩进行为一致；
   // 打开文件时检测的 tab.indent 仅用于建议，不再承担展示。
-  if (store.indentMode === 'tabs') return `${t('menuIndentTabFixed')}: ${store.indentWidth}`;
-  return `${t('indentSpacesWord')}: ${store.indentWidth}`;
+  // 制表符宽度恒为 4（固定），无需显示数字。
+  return store.indentMode === 'tabs'
+    ? t('menuIndentTabFixed')
+    : `${t('indentSpacesWord')}: ${store.indentWidth}`;
 });
 
 /** 光标悬浮释义（中英文按当前语言拼接，零 i18n key）。 */
