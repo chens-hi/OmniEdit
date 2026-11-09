@@ -8,6 +8,19 @@ import {
 } from '@codemirror/view';
 import { RangeSetBuilder } from '@codemirror/state';
 
+/**
+ * 空白符号可见化（Notepad++「显示符号」风格）。
+ *
+ * 关键实现决策：
+ *   - **mark 不 replace**：空格/Tab 保留原字符只加样式类，等宽对齐零偏移；
+ *   - **装饰必须按位置递增喂 RangeSetBuilder**：v0.4.2 曾把软折行标记在主
+ *     循环后追加，位置乱序导致 RangeSetBuilder 抛错、装饰整批丢失（表现：
+ *     自动换行符不显示）。现改为先收集数组、按 from 排序、再统一构建；
+ *   - **软折行检测用 view.viewportLineBlocks**：visibleRanges 是可视文本
+ *     区间不是折行块；viewportLineBlocks 给视口内每个视觉行块，同一逻辑行
+ *     的后续块（doc.lineAt(block.from).from !== block.from）即软折行点。
+ */
+
 /** 插件配置（由 compartment 传入）。 */
 export interface WhitespaceConfig {
   showSpaces: boolean;
@@ -15,21 +28,7 @@ export interface WhitespaceConfig {
   showLineBreaks: boolean;
 }
 
-/**
- * 空白符号可见化（Notepad++「显示符号」风格）。
- *
- * 关键实现决策（v0.4.2 修正）：**用 Decoration.mark 给原字符加样式类，
- * 绝不用 Decoration.replace 替换字符**——替换会把 · / → 的字宽强加给原
- * 空格/Tab 位置，破坏等宽字体的列对齐（实测：开启后行尾注释全部错位）。
- * mark 只挂 span 不改文本流，宽度与原字符完全一致，对齐零偏移。
- *
- *   - 空格 → mark 类 cm-ws-space（CSS 背景点/下划线视觉）
- *   - 制表符 → mark 类 cm-ws-tab（CSS 底部箭头线）
- *   - 真实换行 → 行尾 widget ¶（零宽叠加，不影响布局）
- *   - 软折行 → ↩ widget（仅自动换行时有意义）
- */
-
-/** 行尾真实换行符 ¶（widget 叠加在行末，不占文档位置） */
+/** 行尾真实换行符 ↵（回车键符号，直角；widget 零宽叠加不占布局） */
 class LineBreakWidget extends WidgetType {
   eq() {
     return true;
@@ -37,7 +36,7 @@ class LineBreakWidget extends WidgetType {
   toDOM() {
     const span = document.createElement('span');
     span.className = 'cm-ls-mark';
-    span.textContent = '¶';
+    span.textContent = '↵';
     span.setAttribute('aria-hidden', 'true');
     return span;
   }
@@ -46,7 +45,7 @@ class LineBreakWidget extends WidgetType {
   }
 }
 
-/** 软折行点 ↩ */
+/** 软折行点 ↩（自动换行产生的屏幕折行，弯钩形） */
 class SoftWrapWidget extends WidgetType {
   eq() {
     return true;
@@ -66,19 +65,25 @@ class SoftWrapWidget extends WidgetType {
 const lineBreakDeco = Decoration.widget({ widget: new LineBreakWidget(), side: 1 });
 const softWrapDeco = Decoration.widget({ widget: new SoftWrapWidget(), side: 1 });
 
-/** 空格/Tab 可见化：mark 装饰（保字符、只加样式类） */
+/** 空格/Tab 可见化：mark 装饰（保字符、只加样式类，宽度不变） */
 const spaceDeco = Decoration.mark({ class: 'cm-ws-space' });
 const tabDeco = Decoration.mark({ class: 'cm-ws-tab' });
 
-/** 构建视口内的装饰集合。 */
+interface PendingDeco {
+  from: number;
+  to: number;
+  deco: Decoration;
+}
+
+/** 构建视口内的装饰集合（收集 → 排序 → 构建两级，保证位置递增）。 */
 function buildDecorations(view: EditorView, cfg: WhitespaceConfig): DecorationSet {
-  const builder = new RangeSetBuilder<Decoration>();
   if (!cfg.showSpaces && !cfg.showTabs && !cfg.showLineBreaks) {
-    return builder.finish();
+    return Decoration.none;
   }
 
   const doc = view.state.doc;
   const { from, to } = view.viewport;
+  const pending: PendingDeco[] = [];
 
   for (let pos = from; pos <= to; ) {
     const line = doc.lineAt(pos);
@@ -87,28 +92,38 @@ function buildDecorations(view: EditorView, cfg: WhitespaceConfig): DecorationSe
       for (let i = 0; i < text.length; i++) {
         const ch = text[i];
         if (ch === ' ' && cfg.showSpaces) {
-          builder.add(line.from + i, line.from + i + 1, spaceDeco);
+          pending.push({ from: line.from + i, to: line.from + i + 1, deco: spaceDeco });
         } else if (ch === '\t' && cfg.showTabs) {
-          builder.add(line.from + i, line.from + i + 1, tabDeco);
+          pending.push({ from: line.from + i, to: line.from + i + 1, deco: tabDeco });
         }
       }
     }
-    // 行尾真实换行 ¶（文档最后一行无换行符，跳过）
+    // 行尾真实换行 ↵（文档最后一行无换行符，跳过）
     if (cfg.showLineBreaks && line.to < doc.length) {
-      builder.add(line.to, line.to, lineBreakDeco);
+      pending.push({ from: line.to, to: line.to, deco: lineBreakDeco });
     }
     pos = line.to + 1;
   }
 
-  // 软折行标记 ↩（每个可视区间起点=上一视觉行折回处；首区间跳过）
+  // 软折行标记 ↩：viewportLineBlocks 中同一逻辑行的第 2+ 视觉块起点
   if (cfg.showLineBreaks) {
-    for (const { from: bFrom } of view.visibleRanges) {
-      if (bFrom > from) {
-        builder.add(bFrom, bFrom, softWrapDeco);
+    const blocks = view.viewportLineBlocks;
+    for (let i = 1; i < blocks.length; i++) {
+      const block = blocks[i];
+      // 该视觉块的起点不是其逻辑行的行首 → 它是上一视觉块的折行续块
+      if (doc.lineAt(block.from).from !== block.from) {
+        pending.push({ from: block.from, to: block.from, deco: softWrapDeco });
       }
     }
   }
 
+  // 严格按位置排序（RangeSetBuilder 要求递增；同位置时 widget 顺序稳定）
+  pending.sort((a, b) => a.from - b.from || a.to - b.to);
+
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const d of pending) {
+    builder.add(d.from, d.to, d.deco);
+  }
   return builder.finish();
 }
 
@@ -151,7 +166,7 @@ export const whitespaceTheme = EditorView.baseTheme({
     backgroundPosition: 'left bottom',
     backgroundRepeat: 'no-repeat',
   },
-  // 行尾 ¶ / 软折行 ↩：零宽叠加，不参与文档流宽度
+  // 行尾 ↵ / 软折行 ↩：零宽叠加，不参与文档流宽度
   '.cm-ls-mark': {
     color: 'var(--ws-mark-color)',
     pointerEvents: 'none',

@@ -300,8 +300,21 @@ watch(() => [store.indentMode, store.indentWidth], () => {
 watch(() => store.fontSize, () => {
   view?.dispatch({ effects: fontCompartment.reconfigure(buildFontExts()) });
 });
-watch(() => store.lineWrapping, () => {
+watch(() => store.lineWrapping, (on) => {
   view?.dispatch({ effects: wrapCompartment.reconfigure(buildWrapExts()) });
+  // 抑制重排帧内的横向滚动条闪烁：reconfigure 后 CM 下一帧才完成 measure
+  // 重排，旧布局的超宽行会先撑出横向滚动条再消失（真机实测体验差）。
+  // 双 rAF 等 measure+重排完成后恢复，overflowX 交还 CM 自身管理。
+  const scroller = document.querySelector('.cm-scroller') as HTMLElement | null;
+  if (scroller) {
+    scroller.style.overflowX = 'hidden';
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        scroller.style.overflowX = '';
+      }),
+    );
+  }
+  void on;
 });
 watch(() => store.showLineNumbers, () => {
   view?.dispatch({ effects: lineNoCompartment.reconfigure(buildLineNoExts()) });
