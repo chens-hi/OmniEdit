@@ -65,6 +65,13 @@ function doExit() {
   }
 }
 
+/** 显示子菜单父项右侧的当前值摘要（有任一符号开启即显示"符号: 开"）。 */
+function displayValueText(): string {
+  const anyOn = store.showSpaces || store.showTabs || store.showLineBreaks;
+  if (anyOn) return t('showOn');
+  return store.showLineNumbers ? t('on') : t('off');
+}
+
 // ---- 菜单定义 ----
 
 const saveItem = computed<MenuItem | null>(() => {
@@ -112,8 +119,44 @@ const menus = computed<Menu[]>((): Menu[] => {
     {
       label: t('menuView'),
       items: [
+        {
+          // 显示 ▸ 行号/空格/制表符/换行符（Notepad++ 显示符号风格）
+          type: 'item',
+          label: t('menuDisplay'),
+          valueText: () => displayValueText(),
+          children: [
+            {
+              type: 'radio',
+              label: `${t('menuLineNumbers')} — ${store.showLineNumbers ? t('on') : t('off')}`,
+              radioGroup: 'display',
+              selected: () => store.showLineNumbers,
+              action: () => store.setShowLineNumbers(!store.showLineNumbers),
+            },
+            { type: 'sep' },
+            {
+              type: 'radio',
+              label: `${t('showSpacesLabel')} — ${store.showSpaces ? t('showOn') : t('showOff')}`,
+              radioGroup: 'display',
+              selected: () => store.showSpaces,
+              action: () => store.setShowSpaces(!store.showSpaces),
+            },
+            {
+              type: 'radio',
+              label: `${t('showTabsLabel')} — ${store.showTabs ? t('showOn') : t('showOff')}`,
+              radioGroup: 'display',
+              selected: () => store.showTabs,
+              action: () => store.setShowTabs(!store.showTabs),
+            },
+            {
+              type: 'radio',
+              label: `${t('showLineEndingsLabel')} — ${store.showLineBreaks ? t('showOn') : t('showOff')}`,
+              radioGroup: 'display',
+              selected: () => store.showLineBreaks,
+              action: () => store.setShowLineBreaks(!store.showLineBreaks),
+            },
+          ],
+        },
         { type: 'checkbox', label: t('menuWordWrap'), checked: () => store.lineWrapping, action: () => store.setLineWrapping(!store.lineWrapping) },
-        { type: 'checkbox', label: t('menuLineNumbers'), checked: () => store.showLineNumbers, action: () => store.setShowLineNumbers(!store.showLineNumbers) },
         { type: 'sep' },
         {
           // 缩进 ▸ 空格（点击循环 2→4→8→2）/ 制表符（固定 4）

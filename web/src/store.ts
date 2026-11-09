@@ -101,6 +101,10 @@ export const useEditorStore = defineStore('editor', () => {
   const fontSize = ref<number>(loadPref<number>('fontSize', 14));
   const lineWrapping = ref<boolean>(loadPref<boolean>('lineWrapping', false));
   const showLineNumbers = ref<boolean>(loadPref<boolean>('showLineNumbers', true));
+  // 空白符号可见化（Notepad++「显示符号」风格）
+  const showSpaces = ref<boolean>(loadPref<boolean>('showSpaces', false));
+  const showTabs = ref<boolean>(loadPref<boolean>('showTabs', false));
+  const showLineBreaks = ref<boolean>(loadPref<boolean>('showLineBreaks', false));
 
   function setIndentMode(mode: IndentMode, width: number) {
     indentMode.value = mode;
@@ -132,6 +136,18 @@ export const useEditorStore = defineStore('editor', () => {
   function setShowLineNumbers(on: boolean) {
     showLineNumbers.value = on;
     savePref('showLineNumbers', on);
+  }
+  function setShowSpaces(on: boolean) {
+    showSpaces.value = on;
+    savePref('showSpaces', on);
+  }
+  function setShowTabs(on: boolean) {
+    showTabs.value = on;
+    savePref('showTabs', on);
+  }
+  function setShowLineBreaks(on: boolean) {
+    showLineBreaks.value = on;
+    savePref('showLineBreaks', on);
   }
 
   /** 通过宿主文件选择器打开文件（菜单「打开…」；dev 降级 prompt 输路径）。 */
@@ -366,7 +382,9 @@ export const useEditorStore = defineStore('editor', () => {
     tabs, activeId, activeTab, activePath, error, status,
     saveAsVisible, lastSaveDir,
     indentMode, indentWidth, fontSize, lineWrapping, showLineNumbers,
+    showSpaces, showTabs, showLineBreaks,
     setIndentMode, setFontSize, setLineWrapping, setShowLineNumbers,
+    setShowSpaces, setShowTabs, setShowLineBreaks,
     cycleIndentWidth, cycleFontSize,
     openViaPicker,
     openFile, saveActive, closeTab, markDirty, newUntitled, setError,

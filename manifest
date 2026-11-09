@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.3.11
+version=0.4.0
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.3.11: "换行回绕"更名"自动换行"
+changelog=0.4.0: 视图新增"显示"子菜单：行号/空格·/制表符→/换行符¶，自动换行折点↩ 可区分
