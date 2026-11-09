@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -39,9 +40,14 @@ type Client struct {
 // New 创建开放 API 客户端。
 // appName: 应用唯一标识（须与 manifest 的 appname 一致）。
 func New(appName string) *Client {
+	return NewWithSocket(appName, DefaultSocketPath)
+}
+
+// NewWithSocket 创建指定 Socket 路径的客户端（测试注入假网关用）。
+func NewWithSocket(appName, socketPath string) *Client {
 	c := &Client{
 		appName:    appName,
-		socketPath: DefaultSocketPath,
+		socketPath: socketPath,
 	}
 	c.httpClient = &http.Client{
 		Timeout: 15 * time.Second,
@@ -118,48 +124,102 @@ func (c *Client) request(ctx context.Context, req string, data map[string]any, o
 	return nil
 }
 
-// CheckUserAcl 检查指定用户对某路径是否具备给定权限。
-// req: trim.file.userAcl
-// data 入参/出参字段需以官方文档为准（首版按占位实现，待实测校正）。
-func (c *Client) CheckUserAcl(ctx context.Context, uid, path, perm string) (bool, error) {
-	var out struct {
-		Allowed bool `json:"allowed"`
-	}
-	data := map[string]any{
-		"userId": uid,
-		"path":   path,
-		"perm":   perm, // e.g. read | write | delete
-	}
-	if err := c.request(ctx, "trim.file.userAcl", data, &out); err != nil {
-		return false, err
-	}
-	return out.Allowed, nil
-}
-
-// ListUserAccessPaths 查询当前用户已授权给应用的目录/文件列表。
-// req: trim.file.userAccess
+// ListUserAccessPaths 查询当前用户已授权给应用的**目录**列表。
+// 官方 API（/api/authorization/user-access/）：
+//
+//	req:  trim.file.getUserAccessibleFolders
+//	data: { uid: number }
+//	响应: data: { paths: [...] }
+//
+// 注意：只返回目录授权；文件授权（pickUserFile/authorizeUserFile 选中的
+// 文件）不在此列表中，以选择器返回值为准。
+// （当前权限模型为 root 直读，此方法未被调用；保留备将来回退授权模式。）
 func (c *Client) ListUserAccessPaths(ctx context.Context, uid string) ([]string, error) {
-	var out struct {
-		Paths []string `json:"paths"`
+	uidNum, err := strconv.ParseInt(uid, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("uid 非数字: %q", uid)
 	}
-	data := map[string]any{"userId": uid}
-	if err := c.request(ctx, "trim.file.userAccess", data, &out); err != nil {
+	var out json.RawMessage
+	if err := c.request(ctx, "trim.file.getUserAccessibleFolders", map[string]any{"uid": uidNum}, &out); err != nil {
 		return nil, err
 	}
-	return out.Paths, nil
+	return parsePaths(out)
 }
 
-// ConvertPath 把内部路径（/vol1/...）转换成适合展示给用户的路径。
-// req: trim.file.path
-func (c *Client) ConvertPath(ctx context.Context, path string) (string, error) {
-	var out struct {
-		DisplayPath string `json:"displayPath"`
+// parsePaths 从授权列表响应中容错提取路径数组。
+// 支持形态：["/a"] / {"paths":[...]} / {"data":[...]} / {"list":[...]} /
+// {"items":[{"path":...}]} 等常见包装。
+// 识别失败时记录原始响应（debug 校准字段用），返回错误由调用方拒绝。
+func parsePaths(raw json.RawMessage) ([]string, error) {
+	// 扁平字符串数组
+	var arr []string
+	if err := json.Unmarshal(raw, &arr); err == nil {
+		return arr, nil
 	}
-	data := map[string]any{"path": path}
-	if err := c.request(ctx, "trim.file.path", data, &out); err != nil {
+	// 对象包装
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil {
+		log.Printf("[openapi] userAccess 响应非对象: %s", string(raw))
+		return nil, fmt.Errorf("授权路径响应无法解析: %s", string(raw))
+	}
+	for _, k := range []string{"paths", "data", "list", "items", "files", "dirs", "result"} {
+		v, ok := m[k]
+		if !ok {
+			continue
+		}
+		// 再降一层：数组
+		var s []string
+		if err := json.Unmarshal(v, &s); err == nil {
+			return s, nil
+		}
+		// 对象数组：[{"path": "..."}]
+		var objs []map[string]any
+		if err := json.Unmarshal(v, &objs); err == nil {
+			out := make([]string, 0, len(objs))
+			for _, o := range objs {
+				for _, key := range []string{"path", "value", "name", "dir"} {
+					if sv, ok := o[key].(string); ok && sv != "" {
+						out = append(out, sv)
+						break
+					}
+				}
+			}
+			if len(out) > 0 {
+				return out, nil
+			}
+		}
+	}
+	// 关键校准点：真机首跑若走到这里，日志里的原始 JSON 就是字段形状。
+	log.Printf("[openapi] userAccess 响应字段无法识别（原样记录待校准）: %s", string(raw))
+	return nil, fmt.Errorf("授权路径响应缺少可识别字段: %s", string(raw))
+}
+
+// ConvertPath 把内部路径（/vol1/...）转换成适合展示给用户的语义化路径。
+// 官方 API（/api/authorization/path-convert/）：
+//
+//	req:  trim.file.convertPath
+//	data: { path: string | string[], language: "zh-CN" }（language 必填）
+//	响应: data: { status: 0, result: [{ path, semanticPath }] }
+func (c *Client) ConvertPath(ctx context.Context, path string) (string, error) {
+	lang := "zh-CN"
+	if l := os.Getenv("TRIM_LANGUAGE"); l != "" {
+		lang = l
+	}
+	var out struct {
+		Status int `json:"status"`
+		Result []struct {
+			Path         string `json:"path"`
+			SemanticPath string `json:"semanticPath"`
+		} `json:"result"`
+	}
+	data := map[string]any{"path": path, "language": lang}
+	if err := c.request(ctx, "trim.file.convertPath", data, &out); err != nil {
 		return path, err
 	}
-	return out.DisplayPath, nil
+	if out.Status != 0 || len(out.Result) == 0 {
+		return path, fmt.Errorf("convertPath status=%d", out.Status)
+	}
+	return out.Result[0].SemanticPath, nil
 }
 
 // GetPlatformConfig 读取系统语言和系统版本。

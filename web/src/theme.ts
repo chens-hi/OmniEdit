@@ -13,12 +13,11 @@ function applyTheme(t: Theme) {
 }
 
 /**
- * 从宿主读取平台配置并应用主题/语言。
+ * 从宿主读取平台配置并应用主题，同时监听宿主主题实时切换。
  * 独立浏览器（isStandaloneWeb）下没有宿主，保持默认暗色。
  *
- * 注意：官方 SDK 的 `getPlatformConfig()` 返回当前 theme，
- * 但"主题实时变化"的事件名在 SDK 中未明确公开（$on 需要具体事件名）。
- * 因此首版只在启动时读取一次；实时跟随待拿到官方事件名后补充。
+ * 事件名来自官方 JS SDK 文档（@trimjs/web-app README · Host Events）：
+ * `os/theme` 回调参数即主题字符串。监听失败静默降级为"仅启动读取一次"。
  */
 export async function initTheme(): Promise<void> {
   try {
@@ -28,10 +27,20 @@ export async function initTheme(): Promise<void> {
       return;
     }
     const config = await sdk.getPlatformConfig();
-    const t: Theme = config?.theme === 'light' ? 'light' : 'dark';
-    applyTheme(t);
+    applyTheme(config?.theme === 'light' ? 'light' : 'dark');
   } catch {
     // 读取失败（如非宿主环境）保持默认暗色，不阻塞编辑器。
     applyTheme('dark');
+    return;
+  }
+  // 实时跟随：宿主深/浅色切换时热更新（App.vue 对 theme 的 watch 负责 CodeMirror）。
+  try {
+    await sdk.$on('os/theme', (payload: unknown) => {
+      const value = typeof payload === 'string' ? payload
+        : (payload as { theme?: string })?.theme;
+      if (value === 'light' || value === 'dark') applyTheme(value);
+    });
+  } catch {
+    // 宿主事件总线不可用：维持启动时读取的一次性结果。
   }
 }
