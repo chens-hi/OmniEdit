@@ -107,6 +107,11 @@ function mountEditor(tab: { id: number; content: string; path: string; name: str
   const updateListener = EditorView.updateListener.of((u) => {
     // 光标/文档任何变化都同步行列（含程序化替换后的重置）。
     if (u.selectionSet || u.docChanged) syncCursor(u.state);
+    // wrap 切换的重排完成信号：解除滚动条抑制（事件驱动，见 watch 注释）。
+    if (u.geometryChanged && suppressScrollbar) {
+      suppressScrollbar = false;
+      applyScrollbarSuppress();
+    }
     // 只把「用户输入」计为编辑：程序化同步（docSync 标记）与未挂载完成的
     // 更新一律忽略——否则新打开的文件刚加载就会点亮未保存黄点。
     if (u.docChanged && mountedId && !u.transactions.some(tr => tr.annotation(docSync))) {
@@ -300,20 +305,27 @@ watch(() => [store.indentMode, store.indentWidth], () => {
 watch(() => store.fontSize, () => {
   view?.dispatch({ effects: fontCompartment.reconfigure(buildFontExts()) });
 });
+// 滚动条抑制状态：wrap 切换置位，CM geometryChanged（重排完成标志）驱动恢复
+let suppressScrollbar = false;
+
+function applyScrollbarSuppress() {
+  const scroller = document.querySelector('.cm-scroller') as HTMLElement | null;
+  if (scroller) scroller.style.overflowX = suppressScrollbar ? 'hidden' : '';
+}
+
 watch(() => store.lineWrapping, (on) => {
   view?.dispatch({ effects: wrapCompartment.reconfigure(buildWrapExts()) });
-  // 抑制重排帧内的横向滚动条闪烁：reconfigure 后 CM 下一帧才完成 measure
-  // 重排，旧布局的超宽行会先撑出横向滚动条再消失（真机实测体验差）。
-  // 双 rAF 等 measure+重排完成后恢复，overflowX 交还 CM 自身管理。
-  const scroller = document.querySelector('.cm-scroller') as HTMLElement | null;
-  if (scroller) {
-    scroller.style.overflowX = 'hidden';
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        scroller.style.overflowX = '';
-      }),
-    );
-  }
+  // 事件驱动恢复：reconfigure 后 CM 完成重排必派发 geometryChanged，
+  // updateListener 在那一刻解除抑制（双 rAF 是猜时序，真机不可靠）。
+  suppressScrollbar = true;
+  applyScrollbarSuppress();
+  // 兜底：极端情况下 geometryChanged 迟迟不来，300ms 强制恢复
+  window.setTimeout(() => {
+    if (suppressScrollbar) {
+      suppressScrollbar = false;
+      applyScrollbarSuppress();
+    }
+  }, 300);
   void on;
 });
 watch(() => store.showLineNumbers, () => {

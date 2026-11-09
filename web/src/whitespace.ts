@@ -105,14 +105,18 @@ function buildDecorations(view: EditorView, cfg: WhitespaceConfig): DecorationSe
     pos = line.to + 1;
   }
 
-  // 软折行标记 ↩：viewportLineBlocks 中同一逻辑行的第 2+ 视觉块起点
+  // 软折行标记 ↩：viewportLineBlocks 中同一逻辑行的第 2+ 视觉块，
+  // 画在**上一视觉块的末尾**（blocks[i-1].to）——画在续块行首会被 CM 的
+  // 行首零宽 widget 处理吞进前一行且溢出方向错误，视觉上"消失"（真机实测）。
+  // 与 ¶（line.to 处）位置天然互斥：软折行块末尾不是逻辑行末尾。
   if (cfg.showLineBreaks) {
     const blocks = view.viewportLineBlocks;
     for (let i = 1; i < blocks.length; i++) {
+      const prev = blocks[i - 1];
       const block = blocks[i];
       // 该视觉块的起点不是其逻辑行的行首 → 它是上一视觉块的折行续块
       if (doc.lineAt(block.from).from !== block.from) {
-        pending.push({ from: block.from, to: block.from, deco: softWrapDeco });
+        pending.push({ from: prev.to, to: prev.to, deco: softWrapDeco });
       }
     }
   }
@@ -136,9 +140,11 @@ export function whitespacePlugin(getCfg: () => WhitespaceConfig) {
         this.decorations = buildDecorations(view, getCfg());
       }
       update(u: ViewUpdate) {
-        if (u.docChanged || u.viewportChanged || u.geometryChanged) {
-          this.decorations = buildDecorations(u.view, getCfg());
-        }
+        // 无条件重建：软折行块信息（viewportLineBlocks）可能在
+        // docChanged/viewportChanged/geometryChanged 均未置位的帧里更新
+        // （折行重排晚一拍），条件判断会漏掉时序差（真机实测"↩ 不显示"）。
+        // 视口内扫描成本低，每次 update 重建无感知。
+        this.decorations = buildDecorations(u.view, getCfg());
       }
     },
     {
