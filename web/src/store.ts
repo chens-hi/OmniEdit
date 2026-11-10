@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { readFile, writeFile, unwatchFile, getPrefs, putPrefs, type FileMeta } from './api';
 import { sdk } from './api';
 import { t } from './i18n';
+import { BUILTIN_FONTS, DEFAULT_FONT_ID, applyEditorFont } from './fonts';
 
 // ---- 编辑器设置（菜单栏驱动；后端 prefs 唯一持久化源，无 localStorage 兜底） ----
 
@@ -13,6 +14,7 @@ export const PREF_KEYS = {
   indentMode: 'indentMode',
   indentWidth: 'indentWidth',
   fontSize: 'fontSize',
+  fontStyle: 'fontStyle', // 存的是字体 id（BUILTIN_FONTS），非 CSS font-style
   lineWrapping: 'lineWrapping',
   showLineNumbers: 'showLineNumbers',
   showSpaces: 'showSpaces',
@@ -26,6 +28,7 @@ export const PREF_DEFAULTS = {
   indentMode: 'spaces' as IndentMode,
   indentWidth: 4,
   fontSize: 16,
+  fontStyle: DEFAULT_FONT_ID, // 默认 JetBrains Mono
   lineWrapping: true,
   showLineNumbers: true,
   showSpaces: false,
@@ -117,6 +120,8 @@ export const useEditorStore = defineStore('editor', () => {
   const indentMode = ref<IndentMode>(PREF_DEFAULTS.indentMode);
   const indentWidth = ref<number>(PREF_DEFAULTS.indentWidth);
   const fontSize = ref<number>(PREF_DEFAULTS.fontSize);
+  // 编辑器字体（存 fontStyle = 字体 id，引用 fonts.ts 内置注册表；应用 = 写 --font-mono 变量）
+  const fontStyle = ref<string>(PREF_DEFAULTS.fontStyle);
   const lineWrapping = ref<boolean>(PREF_DEFAULTS.lineWrapping);
   const showLineNumbers = ref<boolean>(PREF_DEFAULTS.showLineNumbers);
   // 空白符号可见化（Notepad++「显示符号」风格）
@@ -133,6 +138,7 @@ export const useEditorStore = defineStore('editor', () => {
       [PREF_KEYS.indentMode]: indentMode.value,
       [PREF_KEYS.indentWidth]: indentWidth.value,
       [PREF_KEYS.fontSize]: fontSize.value,
+      [PREF_KEYS.fontStyle]: fontStyle.value,
       [PREF_KEYS.lineWrapping]: lineWrapping.value,
       [PREF_KEYS.showLineNumbers]: showLineNumbers.value,
       [PREF_KEYS.showSpaces]: showSpaces.value,
@@ -176,6 +182,18 @@ export const useEditorStore = defineStore('editor', () => {
   function setFontSize(px: number) {
     fontSize.value = px;
     persistPrefs();
+  }
+  /** 编辑器字体：切到指定内置字体，即时应用（写 --font-mono）并持久化。 */
+  function setFontStyle(id: string) {
+    fontStyle.value = BUILTIN_FONTS.some(f => f.id === id) ? id : DEFAULT_FONT_ID;
+    applyEditorFont(fontStyle.value);
+    persistPrefs();
+  }
+  /** 字体循环切换（菜单「字体」项点击）：按内置清单顺序循环。 */
+  function cycleFont() {
+    const idx = BUILTIN_FONTS.findIndex(f => f.id === fontStyle.value);
+    const next = BUILTIN_FONTS[(idx + 1) % BUILTIN_FONTS.length];
+    setFontStyle(next.id);
   }
   function setLineWrapping(on: boolean) {
     lineWrapping.value = on;
@@ -487,6 +505,8 @@ export const useEditorStore = defineStore('editor', () => {
       indentMode.value = pick(PREF_KEYS.indentMode, indentMode.value);
       indentWidth.value = pick(PREF_KEYS.indentWidth, indentWidth.value);
       fontSize.value = pick(PREF_KEYS.fontSize, fontSize.value);
+      fontStyle.value = pick(PREF_KEYS.fontStyle, fontStyle.value);
+      applyEditorFont(fontStyle.value);
       lineWrapping.value = pick(PREF_KEYS.lineWrapping, lineWrapping.value);
       showLineNumbers.value = pick(PREF_KEYS.showLineNumbers, showLineNumbers.value);
       showSpaces.value = pick(PREF_KEYS.showSpaces, showSpaces.value);
@@ -538,6 +558,8 @@ export const useEditorStore = defineStore('editor', () => {
     indentMode.value = PREF_DEFAULTS.indentMode;
     indentWidth.value = PREF_DEFAULTS.indentWidth;
     fontSize.value = PREF_DEFAULTS.fontSize;
+    fontStyle.value = PREF_DEFAULTS.fontStyle;
+    applyEditorFont(fontStyle.value);
     lineWrapping.value = PREF_DEFAULTS.lineWrapping;
     showLineNumbers.value = PREF_DEFAULTS.showLineNumbers;
     showSpaces.value = PREF_DEFAULTS.showSpaces;
@@ -565,11 +587,12 @@ export const useEditorStore = defineStore('editor', () => {
   return {
     tabs, activeId, activeTab, activePath, error, status,
     saveAsVisible, lastSaveDir,
-    indentMode, indentWidth, fontSize, lineWrapping, showLineNumbers,
+    indentMode, indentWidth, fontSize, fontStyle, lineWrapping, showLineNumbers,
     showSpaces, showTabs, showLineBreaks,
-    setIndentMode, setFontSize, setLineWrapping, setShowLineNumbers,
+    setIndentMode, setFontSize, setFontStyle, setLineWrapping, setShowLineNumbers,
     setShowSpaces, setShowTabs, setShowLineBreaks,
-    cycleIndentWidth, cycleFontSize,
+    cycleIndentWidth, cycleFontSize, cycleFont,
+    builtinFonts: BUILTIN_FONTS,
     openViaPicker,
     openFile, saveActive, closeTab, markDirty, newUntitled, setError,
     doSaveAs, closeSaveAs,

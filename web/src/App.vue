@@ -1,15 +1,26 @@
 <script setup lang="ts">
 import { onMounted, ref, watch, nextTick, computed } from 'vue';
-import { EditorView, basicSetup } from 'codemirror';
+// 用 minimalSetup 而非 basicSetup：后者硬编码 lineNumbers()，导致行号无法被
+// lineNoCompartment 关闭（basicSetup 那份 lineNumberConfig 恒在）。改用 minimal
+// 后行号唯一来源是我们的 compartment，开关才真正生效。
+import { EditorView, minimalSetup } from 'codemirror';
 import { EditorState, Annotation, Compartment, Prec } from '@codemirror/state';
 import type { Extension } from '@codemirror/state';
-import { indentUnit } from '@codemirror/language';
-import { keymap, lineNumbers } from '@codemirror/view';
-import { indentMore, indentLess } from '@codemirror/commands';
+// 手动补齐 basicSetup 有、minimalSetup 无的能力（除 lineNumbers——交给 compartment）。
+import {
+  indentUnit, indentOnInput, foldGutter, foldKeymap, bracketMatching,
+  syntaxHighlighting, defaultHighlightStyle,
+} from '@codemirror/language';
+import {
+  keymap, lineNumbers, drawSelection, dropCursor, rectangularSelection,
+  crosshairCursor, highlightActiveLine, highlightActiveLineGutter,
+  highlightSpecialChars,
+} from '@codemirror/view';
+import { history, indentMore, indentLess, defaultKeymap, historyKeymap } from '@codemirror/commands';
 import type { Command } from '@codemirror/view';
 // tabSize 是 EditorState 静态 facet
 const tabSizeFacet = EditorState.tabSize;
-import { search } from '@codemirror/search';
+import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { languageExtensionFor } from './language';
 import { useEditorStore } from './store';
@@ -30,7 +41,7 @@ const showPreview = ref(false);
 const showAbout = ref(false);
 const showShortcuts = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.22';
+const appVersion = '0.5.25';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -68,7 +79,9 @@ function buildIndentExts(): Extension[] {
 
 function buildFontExts(): Extension[] {
   return [EditorView.theme({
-    '&': { fontSize: `${store.fontSize}px` },
+    // 编辑器字体走 --font-mono 变量（fonts.css 定义默认栈，applyEditorFont 动态覆盖）。
+    // 用变量而非写死值：切换字体时 applyEditorFont 改一个变量即全局生效，无需重建编辑器。
+    '&': { fontSize: `${store.fontSize}px`, fontFamily: 'var(--font-mono)' },
     '.cm-scroller': { lineHeight: '1.6' },
   })];
 }
@@ -126,7 +139,24 @@ function mountEditor(tab: { id: number; content: string; path: string; name: str
   view = new EditorView({
     parent: host,
     extensions: [
-      basicSetup,
+      // minimalSetup + 手动补齐（除 lineNumbers）：等价 basicSetup 但行号可控。
+      // 见顶部 import 处的说明——basicSetup 硬编码 lineNumbers() 导致行号关不掉。
+      minimalSetup,
+      drawSelection(),
+      dropCursor(),
+      EditorState.allowMultipleSelections.of(true),
+      indentOnInput(),
+      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      bracketMatching(),
+      rectangularSelection(),
+      crosshairCursor(),
+      highlightActiveLine(),
+      highlightActiveLineGutter(),
+      highlightSpecialChars(),
+      highlightSelectionMatches(),
+      foldGutter(),
+      history(),
+      keymap.of([...defaultKeymap, ...historyKeymap, ...foldKeymap, ...searchKeymap]),
       // 应用级快捷键（Prec.highest 优先于 defaultKeymap，含 Tab 缩进）
       appKeymap,
       // 搜索浮窗：官方搜索状态机 + 自定义面板 UI（Mod-f/F3/Esc 官方 keymap 保留）

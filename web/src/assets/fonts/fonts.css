@@ -1,0 +1,46 @@
+/*
+ * 内置字体 @font-face 声明。
+ *
+ * 这个文件必须保留为**被 Vite 处理的 CSS**（经 styles.css @import 引入），
+ * 因为 Vite 只重写它处理的 CSS 里的相对 url()——打包时 woff2 会被 hash 并
+ * 注入正确 base 前缀（/app/omniedit/assets/...），避免统一网关下 404。
+ * 切勿把 @font-face 挪进 TS 字符串里用 <style> 注入（相对路径不会被处理）。
+ *
+ * 加新内置字体：在 fonts.ts 的 BUILTIN_FONTS 加一条 + 丢 woff2 进本目录 +
+ * 在此补对应的 @font-face（声明与注册表目前是两处，注释对齐）。
+ *
+ * 字体栈（font-family 回退顺序）由 fonts.ts 的 fontStack() 统一生成，
+ * 这里只负责 @font-face 的字形来源声明。
+ */
+
+/* JetBrains Mono（可变字体，一个文件覆盖 100-800 字重）。仅 latin / latin-ext 子集。 */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url('./jetbrains-mono-400-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url('./jetbrains-mono-400-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* 编辑器等宽字体栈默认值（兜底）。
+   JS 启动后由 fonts.ts 的 applyEditorFont() 用用户选中字体覆盖同一变量，
+   但首帧（initPrefs 异步返回前）先从这里取值，避免闪一下浏览器默认字体。
+   栈序：JetBrains Mono（内置默认）→ 系统等宽回退 → 中文回退雅黑/苹方。 */
+:root {
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, 'Courier New',
+    monospace, 'Microsoft YaHei', 'PingFang SC', sans-serif;
+}

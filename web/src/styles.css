@@ -1,3 +1,5 @@
+@import './assets/fonts/fonts.css';
+
 :root {
   --bg: #1e1e1e;
   --fg: #d4d4d4;
@@ -108,6 +110,34 @@ body,
 
 .editor-host .cm-editor {
   height: 100%;
+}
+
+/* ---------- 行号槽（CodeMirror gutter） ---------- */
+/* 统一到主题变量：柔化背景/数字色，去掉默认生硬外观，数字等宽右对齐。 */
+.editor-host .cm-gutters {
+  background: var(--toolbar-bg);
+  border-right: 1px solid var(--border);
+  color: var(--fg);
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+/* 行号数字：右对齐 + 与代码留出呼吸间距（padding-right 拉开 gutter 与正文） */
+.editor-host .cm-lineNumbers .cm-gutterElement {
+  color: #6e7681;
+  padding: 0 10px 0 6px;
+  font-variant-numeric: tabular-nums;
+  min-width: 42px;
+}
+html[data-theme="light"] .editor-host .cm-lineNumbers .cm-gutterElement {
+  color: #8c959f;
+}
+
+/* 当前行号高亮：跟随 accent，弱化处理（比正文 active line 更含蓄） */
+.editor-host .cm-activeLineGutter {
+  background: transparent;
+  color: var(--accent);
 }
 
 .placeholder {
