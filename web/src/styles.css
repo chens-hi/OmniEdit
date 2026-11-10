@@ -30,6 +30,52 @@ html[data-theme="light"] {
   --ws-mark-color: rgba(196, 120, 48, 0.75);
 }
 
+/* ---------- 滚动条（全局统一，跟随主题） ---------- */
+/* 设计：细圆角滑块悬浮于透明轨道上，无箭头按钮；滑块颜色由 --fg-muted 半透明
+   生成，深浅主题自动适配（主题切换即时生效）。编辑器/标签栏/预览/菜单全适用。 */
+/* Firefox 回退（fnOS 宿主为 Chromium 内核，此处仅兜底） */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--fg-muted) 55%, transparent) transparent;
+}
+
+/* Chromium / Safari */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  /* transparent 边框 + padding-box 裁切 = 滑块四周留 2px 空隙，悬浮感 */
+  background: color-mix(in srgb, var(--fg-muted) 45%, transparent);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--fg-muted) 75%, transparent);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:active {
+  background: color-mix(in srgb, var(--fg) 55%, transparent);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+/* 去掉 Chromium 默认的上下箭头按钮（截图里显旧的主要来源） */
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 * {
   box-sizing: border-box;
 }
