@@ -85,6 +85,7 @@ const dict = {
   menuFontSizeItem: { zh: '字号', en: 'Font Size' },
   menuShortcuts: { zh: '快捷键速查', en: 'Keyboard Shortcuts' },
   menuAbout: { zh: '关于 OmniEdit', en: 'About OmniEdit' },
+  undoRedo: { zh: '撤销 / 重做', en: 'Undo / Redo' },
   promptOpenPath: { zh: '输入要打开的文件路径（本地开发模式）：', en: 'Enter file path to open (local dev mode):' },
 
   // 状态栏

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { onMounted, ref, watch, nextTick, computed } from 'vue';
 import { EditorView, basicSetup } from 'codemirror';
-import { EditorState, Annotation, Compartment } from '@codemirror/state';
+import { EditorState, Annotation, Compartment, Prec } from '@codemirror/state';
 import type { Extension } from '@codemirror/state';
 import { indentUnit } from '@codemirror/language';
-import { lineNumbers } from '@codemirror/view';
+import { keymap, lineNumbers } from '@codemirror/view';
+import { indentWithTab } from '@codemirror/commands';
 // tabSize 是 EditorState 静态 facet
 const tabSizeFacet = EditorState.tabSize;
 import { search } from '@codemirror/search';
@@ -125,7 +126,9 @@ function mountEditor(tab: { id: number; content: string; path: string; name: str
     parent: host,
     extensions: [
       basicSetup,
-      // 搜索浮窗：官方搜索状态机 + 自定义面板 UI（Ctrl-F/Ctrl-H/F3 官方 keymap 保留）
+      // 应用级快捷键（Prec.highest 优先于 defaultKeymap，含 Tab 缩进）
+      appKeymap,
+      // 搜索浮窗：官方搜索状态机 + 自定义面板 UI（Mod-f/F3/Esc 官方 keymap 保留）
       search({ createPanel: createSearchPanel() }),
       ...languageExtensionFor(tab.path || tab.name),
       themeCompartment.of(cmThemeFor(theme.value)),
@@ -272,36 +275,35 @@ function onSave() {
   void store.saveActive();
 }
 
-function onKeydown(e: KeyboardEvent) {
-  const mod = e.ctrlKey || e.metaKey;
-  if (mod && e.key.toLowerCase() === 's') {
-    e.preventDefault();
-    if (e.shiftKey) {
-      // Ctrl+Shift+S：另存为（草稿和已打开文件都可用）
-      store.saveAsVisible = true;
-    } else {
-      onSave();
-    }
-  }
-  if (mod && e.key.toLowerCase() === 'n') {
-    e.preventDefault();
-    store.newUntitled();
-  }
-  if (mod && e.key.toLowerCase() === 'o') {
-    e.preventDefault();
-    void store.openViaPicker();
-  }
-  if (mod && e.key.toLowerCase() === 'h') {
-    e.preventDefault();
-    if (view) openSearch(view, 'replace');
-  }
-  // Ctrl+F 由 CodeMirror 官方 keymap 处理（打开搜索面板）
-}
-
 // 菜单动作：查找/替换（App 持有 view 实例）
 function onMenuFind(mode: 'find' | 'replace') {
   if (view) openSearch(view, mode);
 }
+
+/**
+ * 应用级快捷键统一由 CM keymap 管理（Prec.highest 优先于 defaultKeymap /
+ * searchKeymap），根治此前 @keydown（冒泡阶段）抢不过 CM 目标阶段 keymap
+ * 导致编辑器聚焦时 Ctrl+N/O 触发默认光标动作的问题。
+ *
+ * 不绑定：
+ *  - Mod-f：官方 searchKeymap 已管（打开查找面板）；
+ *  - Ctrl+H：让给浏览器历史记录（Web 环境无替换快捷键惯例，替换走菜单
+ *    「替换…」或查找面板自带的替换输入框）；
+ *  - F3/Esc/Ctrl-Z/Y/注释等：basicSetup + searchKeymap 已内置。
+ */
+const appKeymap = Prec.highest(
+  keymap.of([
+    { key: 'Mod-s', run: () => { onSave(); return true; } },
+    { key: 'Mod-n', run: () => { store.newUntitled(); return true; } },
+    { key: 'Mod-o', run: () => { void store.openViaPicker(); return true; } },
+    { key: 'Mod-w', run: () => {
+      const tab = store.activeTab;
+      if (tab) store.closeTab(tab.id);
+      return true;
+    } },
+    indentWithTab, // Tab 缩进 / Shift-Tab 反缩进，遵循 indentCompartment
+  ]),
+);
 
 // 设置变化 → 重新配置 CodeMirror（菜单栏切换即时生效）
 watch(() => [store.indentMode, store.indentWidth], () => {
@@ -358,7 +360,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="app" @keydown="onKeydown">
+  <div class="app">
     <MenuBar
       @find="onMenuFind"
       @about="showAbout = true"
@@ -445,10 +447,12 @@ onMounted(async () => {
           <div><span>Ctrl+N</span>{{ t('menuNew') }}</div>
           <div><span>Ctrl+O</span>{{ t('menuOpen') }}</div>
           <div><span>Ctrl+S</span>{{ t('menuSave') }}</div>
-          <div><span>Ctrl+Shift+S</span>{{ t('menuSaveAs') }}</div>
+          <div><span>Ctrl+W</span>{{ t('close') }}</div>
           <div><span>Ctrl+F</span>{{ t('menuFind') }}</div>
-          <div><span>Ctrl+H</span>{{ t('menuReplace') }}</div>
           <div><span>F3 / Shift+F3</span>{{ t('nextMatch') }} / {{ t('prevMatch') }}</div>
+          <div><span>Tab / Shift+Tab</span>{{ t('menuIndent') }}</div>
+          <div><span>Ctrl+Z / Ctrl+Y</span>{{ t('undoRedo') }}</div>
+          <div><span>Esc</span>{{ t('closeSearch') }}</div>
         </div>
         <button class="btn" @click="showShortcuts = false">{{ t('cancel') }}</button>
       </div>

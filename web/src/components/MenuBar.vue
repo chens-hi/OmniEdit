@@ -78,12 +78,12 @@ const saveItem = computed<MenuItem | null>(() => {
   if (!tab) return null;
   if (!tab.path) {
     // 草稿：只显示「保存为…」
-    return { type: 'item', label: t('menuSaveAs'), shortcut: 'Ctrl+Shift+S', action: doSaveAs };
+    return { type: 'item', label: t('menuSaveAs'), action: doSaveAs };
   }
   const canSave = tab.dirty;
   const items: MenuItem[] = [
     { type: 'item', label: t('menuSave'), shortcut: 'Ctrl+S', disabled: () => !canSave, action: () => { openMenu.value = null; store.saveActive(); } },
-    { type: 'item', label: t('menuSaveAs'), shortcut: 'Ctrl+Shift+S', action: doSaveAs },
+    { type: 'item', label: t('menuSaveAs'), action: doSaveAs },
   ];
   return items[0];
 });
@@ -97,7 +97,7 @@ const menus = computed<Menu[]>((): Menu[] => {
   ];
   if (saveItem.value) fileItems.push(saveItem.value);
   if (tab && tab.path) {
-    fileItems.push({ type: 'item', label: t('menuSaveAs'), shortcut: 'Ctrl+Shift+S', action: doSaveAs });
+    fileItems.push({ type: 'item', label: t('menuSaveAs'), action: doSaveAs });
   }
   fileItems.push(
     { type: 'sep' },
@@ -112,7 +112,7 @@ const menus = computed<Menu[]>((): Menu[] => {
       label: t('menuEdit'),
       items: [
         { type: 'item', label: t('menuFind'), shortcut: 'Ctrl+F', disabled: () => !canSearch, action: () => doFind('find') },
-        { type: 'item', label: t('menuReplace'), shortcut: 'Ctrl+H', disabled: () => !canSearch, action: () => doFind('replace') },
+        { type: 'item', label: t('menuReplace'), disabled: () => !canSearch, action: () => doFind('replace') },
       ],
     },
     {
