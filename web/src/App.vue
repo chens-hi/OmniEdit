@@ -36,6 +36,7 @@ import MarkdownPreview from './components/MarkdownPreview.vue';
 import SaveAsDialog from './components/SaveAsDialog.vue';
 import ConfirmDialog from './components/ConfirmDialog.vue';
 import AppModal from './components/AppModal.vue';
+import AppToast from './components/AppToast.vue';
 
 const store = useEditorStore();
 const showPreview = ref(false);
@@ -43,7 +44,7 @@ const showPreview = ref(false);
 const showAbout = ref(false);
 const showShortcuts = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.37';
+const appVersion = '0.5.38';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -475,6 +476,9 @@ onMounted(async () => {
       @confirm="store.doSaveAs($event)"
       @close="store.closeSaveAs()"
     />
+
+    <!-- 全局轻提示（toast）：store.toast 驱动，自动消失 -->
+    <AppToast />
 
     <!-- 全局确认对话框（替代 window.confirm，store.confirm 驱动） -->
     <ConfirmDialog

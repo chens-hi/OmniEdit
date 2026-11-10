@@ -263,9 +263,9 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   function newUntitled(): Tab | null {
-    // 标签数上限：拒绝新开（提示在状态栏），绝不自动关闭已有标签。
+    // 标签数上限：拒绝新开（toast 提示），绝不自动关闭已有标签。
     if (tabs.value.length >= MAX_TABS) {
-      setError(t('tabLimitReached').replace('{n}', String(MAX_TABS)));
+      toast(t('tabLimitReached').replace('{n}', String(MAX_TABS)), 'error');
       return null;
     }
     untitledSeq += 1;
@@ -296,7 +296,7 @@ export const useEditorStore = defineStore('editor', () => {
       return;
     }
     if (tabs.value.length >= MAX_TABS) {
-      setError(t('tabLimitReached').replace('{n}', String(MAX_TABS)));
+      toast(t('tabLimitReached').replace('{n}', String(MAX_TABS)), 'error');
       return;
     }
     const draft: Tab = {
@@ -410,6 +410,30 @@ export const useEditorStore = defineStore('editor', () => {
     const resolve = confirmResolver;
     confirmResolver = null;
     resolve?.(ok);
+  }
+
+  // ---- 全局轻提示（toast）：非阻塞通知，自动消失（AppToast 组件渲染）----
+
+  type ToastType = 'info' | 'success' | 'warning' | 'error';
+  const toasts = ref<{ id: number; message: string; type: ToastType }[]>([]);
+  let toastSeq = 0;
+
+  /**
+   * toast 弹出一条轻提示，duration 毫秒后自动消失（点击卡片可提前关闭）。
+   * 适合「够到了上限」「已还原」这类瞬态反馈；需要持续可见的错误（如保存失败）
+   * 仍走 setError 状态栏。最多同时 4 条，超量移除最旧（其定时器之后触发
+   * dismissToast 对已移除项是空操作，无需跟踪句柄）。
+   */
+  function toast(message: string, type: ToastType = 'info', duration = 3200) {
+    const id = ++toastSeq;
+    toasts.value.push({ id, message, type });
+    if (toasts.value.length > 4) toasts.value.shift();
+    window.setTimeout(() => dismissToast(id), duration);
+  }
+
+  /** AppToast 回调：按 id 关闭（点击卡片或定时器到期）。 */
+  function dismissToast(id: number) {
+    toasts.value = toasts.value.filter(x => x.id !== id);
   }
 
   /** 保存当前活动标签：草稿/无路径 → 打开另存为对话框；否则直存。 */
@@ -643,7 +667,8 @@ export const useEditorStore = defineStore('editor', () => {
     // 回到初始界面：一个空白无标题草稿。
     untitledSeq = 0;
     newUntitled();
-    status.value = t('resetDone');
+    status.value = t('ready');
+    toast(t('resetDone'), 'success');
     return ok;
   }
 
@@ -651,6 +676,7 @@ export const useEditorStore = defineStore('editor', () => {
     tabs, activeId, activeTab, activePath, error, status,
     saveAsVisible, lastSaveDir,
     confirmDialog, confirm, settleConfirm,
+    toasts, toast, dismissToast,
     indentMode, indentWidth, fontSize, fontFamily, lineWrapping, showLineNumbers,
     showSpaces, showTabs, showLineBreaks,
     setIndentMode, setFontSize, setFontFamily, setLineWrapping, setShowLineNumbers,

@@ -8,6 +8,8 @@
   --border: #333;
   --accent: #4a9eff;
   --error: #f66;
+  --success: #4ec9b0;   /* 成功/肯定反馈（toast 等语义色） */
+  --warning: #e2c08d;   /* 警示反馈（与页签未保存点同色系） */
   /* 显示符号（空白可见化）颜色——暗色主题（暖橙，参考 Notepad++ 风格制表符箭头） */
   --ws-dot-color: rgba(232, 158, 92, 0.55);
   --ws-line-color: rgba(232, 158, 92, 0.55);
@@ -24,6 +26,8 @@ html[data-theme="light"] {
   --border: #e1e4e8;
   --accent: #0969da;
   --error: #cf222e;
+  --success: #1a7f37;   /* 成功/肯定反馈——浅色主题 */
+  --warning: #9a6700;   /* 警示反馈——浅色主题 */
   /* 显示符号颜色——浅色主题（深橙系，白底上保持可见） */
   --ws-dot-color: rgba(196, 120, 48, 0.60);
   --ws-line-color: rgba(196, 120, 48, 0.60);
