@@ -281,6 +281,13 @@ body,
   border: none;
 }
 
+/* oneDark 主题在同特异性（0,2,0）下「后注入」border-bottom: 2px solid black，
+   会按级联顺序盖掉上面的 border:none——面板容器下方出现一条纯黑线。
+   加 .editor-host 提到 (0,3,0) 压过它，彻底去掉容器黑边。 */
+.editor-host .cm-panels.cm-panels-top {
+  border: none;
+}
+
 .cm-panels .omni-search {
   display: flex;
   flex-direction: column;
@@ -290,7 +297,9 @@ body,
   background: var(--toolbar-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  /* 深色主题下大范围黑阴影会在编辑器背景上「糊」出一块黑色色块，
+     只保留贴边的轻投影提供层次感（边界由 border 表达）。 */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
 }
 
 .omni-row {
@@ -374,12 +383,5 @@ body,
   color: var(--error);
 }
 
-/* ---------- 模态内容（关于/快捷键，配合 AppModal 插槽） ---------- */
+/* ---------- 模态内容（关于，配合 AppModal 插槽） ---------- */
 .dim { color: var(--fg-muted); margin-top: 4px; font-size: 12px; }
-.shortcuts { text-align: left; }
-.shortcuts div {
-  display: flex; justify-content: space-between;
-  padding: 5px 0; border-bottom: 1px dashed var(--border);
-  font-size: 12px; color: var(--fg);
-}
-.shortcuts span { color: var(--accent); font-family: Consolas, monospace; }

@@ -4,6 +4,7 @@ import { readFile, writeFile, unwatchFile, getPrefs, putPrefs, type FileMeta } f
 import { sdk } from './api';
 import { t } from './i18n';
 import { BUILTIN_FONTS, DEFAULT_FONT_ID, applyEditorFont } from './fonts';
+import { setThemeOverride, type ThemeMode } from './theme';
 
 // ---- 编辑器设置（菜单栏驱动；后端 prefs 唯一持久化源，无 localStorage 兜底） ----
 
@@ -15,6 +16,7 @@ export const PREF_KEYS = {
   indentWidth: 'indentWidth',
   fontSize: 'fontSize',
   fontFamily: 'fontFamily', // 存的是字体 id（BUILTIN_FONTS），与 CSS font-family 语义对齐
+  themeMode: 'themeMode', // 主题模式：auto=跟随宿主系统，light/dark=用户强制指定
   lineWrapping: 'lineWrapping',
   showLineNumbers: 'showLineNumbers',
   showSpaces: 'showSpaces',
@@ -29,6 +31,7 @@ export const PREF_DEFAULTS = {
   indentWidth: 4,
   fontSize: 16,
   fontFamily: DEFAULT_FONT_ID, // 默认 JetBrains Mono
+  themeMode: 'auto' as ThemeMode, // 默认跟随宿主系统
   lineWrapping: true,
   showLineNumbers: true,
   showSpaces: false,
@@ -129,6 +132,8 @@ export const useEditorStore = defineStore('editor', () => {
   const fontSize = ref<number>(PREF_DEFAULTS.fontSize);
   // 编辑器字体（存 fontFamily = 字体 id，引用 fonts.ts 内置注册表；应用 = 写 --font-mono 变量）
   const fontFamily = ref<string>(PREF_DEFAULTS.fontFamily);
+  // 主题模式（auto=跟随宿主系统）：应用经 theme.ts 的 setThemeOverride
+  const themeMode = ref<ThemeMode>(PREF_DEFAULTS.themeMode);
   const lineWrapping = ref<boolean>(PREF_DEFAULTS.lineWrapping);
   const showLineNumbers = ref<boolean>(PREF_DEFAULTS.showLineNumbers);
   // 空白符号可见化（Notepad++「显示符号」风格）
@@ -146,6 +151,7 @@ export const useEditorStore = defineStore('editor', () => {
       [PREF_KEYS.indentWidth]: indentWidth.value,
       [PREF_KEYS.fontSize]: fontSize.value,
       [PREF_KEYS.fontFamily]: fontFamily.value,
+      [PREF_KEYS.themeMode]: themeMode.value,
       [PREF_KEYS.lineWrapping]: lineWrapping.value,
       [PREF_KEYS.showLineNumbers]: showLineNumbers.value,
       [PREF_KEYS.showSpaces]: showSpaces.value,
@@ -173,19 +179,6 @@ export const useEditorStore = defineStore('editor', () => {
     indentWidth.value = width;
     persistPrefs();
   }
-  /** 空格宽度循环 2→4→8→2（菜单「缩进」项点击）。 */
-  function cycleIndentWidth() {
-    const seq = [2, 4, 8];
-    const idx = seq.indexOf(indentWidth.value);
-    const next = idx === -1 ? 2 : seq[(idx + 1) % seq.length];
-    setIndentMode('spaces', next);
-  }
-  /** 字体大小循环 12→14→16→18→20→12（菜单「字号」项点击）。 */
-  function cycleFontSize() {
-    const seq = [12, 14, 16, 18, 20];
-    const idx = seq.indexOf(fontSize.value);
-    setFontSize(seq[(idx + 1) % seq.length]);
-  }
   function setFontSize(px: number) {
     fontSize.value = px;
     persistPrefs();
@@ -196,11 +189,11 @@ export const useEditorStore = defineStore('editor', () => {
     applyEditorFont(fontFamily.value);
     persistPrefs();
   }
-  /** 字体循环切换（菜单「字体」项点击）：按内置清单顺序循环。 */
-  function cycleFont() {
-    const idx = BUILTIN_FONTS.findIndex(f => f.id === fontFamily.value);
-    const next = BUILTIN_FONTS[(idx + 1) % BUILTIN_FONTS.length];
-    setFontFamily(next.id);
+  /** 主题模式：auto=跟随宿主系统；light/dark 强制指定。经 theme.ts 应用并持久化。 */
+  function setThemeMode(mode: ThemeMode) {
+    themeMode.value = mode;
+    setThemeOverride(mode);
+    persistPrefs();
   }
   function setLineWrapping(on: boolean) {
     lineWrapping.value = on;
@@ -443,8 +436,8 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   /**
-   * 保存任意标签（页签右键菜单用）：有路径直存；草稿先激活再打开另存为
-   * （另存为对话框面向活动标签，先切换保证语义正确）。
+   * 保存任意标签（saveActive 的核心实现）：有路径直存；草稿先激活再打开
+   * 另存为（另存为对话框面向活动标签，先切换保证语义正确）。
    * 返回是否已落盘（草稿弹对话框视为未落盘，返回 false）。
    */
   async function saveTab(id: number): Promise<boolean> {
@@ -621,6 +614,8 @@ export const useEditorStore = defineStore('editor', () => {
       const legacyFont = typeof prefs['fontStyle'] === 'string' ? prefs['fontStyle'] as string : undefined;
       fontFamily.value = pick(PREF_KEYS.fontFamily, legacyFont ?? fontFamily.value);
       applyEditorFont(fontFamily.value);
+      themeMode.value = pick(PREF_KEYS.themeMode, themeMode.value);
+      setThemeOverride(themeMode.value);
       lineWrapping.value = pick(PREF_KEYS.lineWrapping, lineWrapping.value);
       showLineNumbers.value = pick(PREF_KEYS.showLineNumbers, showLineNumbers.value);
       showSpaces.value = pick(PREF_KEYS.showSpaces, showSpaces.value);
@@ -677,6 +672,8 @@ export const useEditorStore = defineStore('editor', () => {
     fontSize.value = PREF_DEFAULTS.fontSize;
     fontFamily.value = PREF_DEFAULTS.fontFamily;
     applyEditorFont(fontFamily.value);
+    themeMode.value = PREF_DEFAULTS.themeMode;
+    setThemeOverride(themeMode.value);
     lineWrapping.value = PREF_DEFAULTS.lineWrapping;
     showLineNumbers.value = PREF_DEFAULTS.showLineNumbers;
     showSpaces.value = PREF_DEFAULTS.showSpaces;
@@ -707,11 +704,10 @@ export const useEditorStore = defineStore('editor', () => {
     saveAsVisible, lastSaveDir,
     confirmDialog, confirm, settleConfirm,
     toasts, toast, dismissToast,
-    indentMode, indentWidth, fontSize, fontFamily, lineWrapping, showLineNumbers,
+    indentMode, indentWidth, fontSize, fontFamily, themeMode, lineWrapping, showLineNumbers,
     showSpaces, showTabs, showLineBreaks,
-    setIndentMode, setFontSize, setFontFamily, setLineWrapping, setShowLineNumbers,
+    setIndentMode, setFontSize, setFontFamily, setThemeMode, setLineWrapping, setShowLineNumbers,
     setShowSpaces, setShowTabs, setShowLineBreaks,
-    cycleIndentWidth, cycleFontSize, cycleFont,
     builtinFonts: BUILTIN_FONTS,
     openViaPicker,
     openFile, saveActive, saveTab, closeTab, closeTabsToRight, markDirty, newUntitled, setError,

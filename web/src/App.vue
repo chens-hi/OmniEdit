@@ -40,11 +40,10 @@ import AppToast from './components/AppToast.vue';
 
 const store = useEditorStore();
 const showPreview = ref(false);
-// 关于 / 快捷键速查模态
+// 关于模态
 const showAbout = ref(false);
-const showShortcuts = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.40';
+const appVersion = '0.5.52';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -344,14 +343,18 @@ const shiftTabCommand: Command = (view) => indentLess(view);
 /**
  * 应用级快捷键：只保留常规编辑键（Prec.highest 优先于 defaultKeymap）。
  *
- * 保留：Mod-s 保存、Tab/Shift-Tab 缩进（自定义，遵循缩进设置）、
- * Mod-f/F3/Esc（官方 searchKeymap）、Ctrl+Z/Y 等（basicSetup 内置）。
+ * 保留：Mod-s 保存、Mod-h 替换、Tab/Shift-Tab 缩进（自定义，遵循缩进设置）、
+ * Mod-f/F3/Esc（官方 searchKeymap）、Ctrl+Z/Y 等（minimalSetup 内置）。
+ * 注意 Mod-f 必须接管为自定义 openSearch('find')：官方 openSearchPanel 不知道
+ * 我们的查找/替换展开模式，会让面板带着上次遗留的替换展开态打开。
  * 不绑定：Ctrl+N/O/W（浏览器原生语义：新窗口/打开/关页面，功能走菜单与
- * 按钮）、Ctrl+H（让给浏览器历史）、Ctrl+Shift+S（另存为走菜单）。
+ * 按钮）、Ctrl+Shift+S（另存为走菜单）。
  */
 const appKeymap = Prec.highest(
   keymap.of([
     { key: 'Mod-s', run: () => { onSave(); return true; } },
+    { key: 'Mod-f', run: () => { onMenuFind('find'); return true; } },
+    { key: 'Mod-h', run: () => { onMenuFind('replace'); return true; } },
     { key: 'Tab', run: tabCommand, shift: shiftTabCommand },
   ]),
 );
@@ -421,11 +424,8 @@ onMounted(async () => {
 <template>
   <div class="app">
     <MenuBar
-      :preview-open="showPreview"
       @find="onMenuFind"
-      @toggle-preview="showPreview = !showPreview"
       @about="showAbout = true"
-      @shortcuts="showShortcuts = true"
     />
 
     <div class="body">
@@ -495,20 +495,6 @@ onMounted(async () => {
       <div class="dim">v{{ appVersion }}</div>
       <template #footer>
         <button class="btn" @click="showAbout = false">{{ t('cancel') }}</button>
-      </template>
-    </AppModal>
-
-    <AppModal v-if="showShortcuts" :title="t('menuShortcuts')" :width="360" @close="showShortcuts = false">
-      <div class="shortcuts">
-        <div><span>Ctrl+S</span>{{ t('menuSave') }}</div>
-        <div><span>Ctrl+F</span>{{ t('menuFind') }}</div>
-        <div><span>F3 / Shift+F3</span>{{ t('nextMatch') }} / {{ t('prevMatch') }}</div>
-        <div><span>Tab / Shift+Tab</span>{{ t('menuIndent') }}</div>
-        <div><span>Ctrl+Z / Ctrl+Y</span>{{ t('undoRedo') }}</div>
-        <div><span>Esc</span>{{ t('closeSearch') }}</div>
-      </div>
-      <template #footer>
-        <button class="btn" @click="showShortcuts = false">{{ t('cancel') }}</button>
       </template>
     </AppModal>
   </div>

@@ -13,16 +13,9 @@ import { t, lang } from '../i18n';
 
 const store = useEditorStore();
 
-const props = defineProps<{
-  /** Markdown 预览当前是否展开（驱动「视图 ▸ 预览」勾选态）。 */
-  previewOpen: boolean;
-}>();
-
 const emit = defineEmits<{
   (e: 'find', mode: 'find' | 'replace'): void;
   (e: 'about'): void;
-  (e: 'shortcuts'): void;
-  (e: 'togglePreview'): void;
 }>();
 
 /** 菜单项定义 */
@@ -42,8 +35,6 @@ interface MenuItem {
   children?: MenuItem[];
   /** 父项右侧的动态值（如缩进当前宽度） */
   valueText?: () => string;
-  /** 点击循环项：点击时闪烁 accent 高亮作为反馈 */
-  cycle?: boolean;
 }
 
 interface Menu {
@@ -76,12 +67,6 @@ async function doReset() {
   openMenu.value = null;
   if (!(await store.confirm(t('resetConfirm'), { danger: true }))) return;
   void store.resetToDefaults();
-}
-
-/** 显示子菜单父项右侧的当前值摘要（有任一符号开启即显示"符号: 开"）。 */
-function displayValueText(): string {
-  if (store.showSpaces || store.showTabs || store.showLineBreaks) return t('showOn');
-  return t('showOff');
 }
 
 // ---- 菜单定义 ----
@@ -125,93 +110,92 @@ const menus = computed<Menu[]>((): Menu[] => {
       label: t('menuEdit'),
       items: [
         { type: 'item', label: t('menuFind'), shortcut: 'Ctrl+F', disabled: () => !canSearch, action: () => doFind('find') },
-        { type: 'item', label: t('menuReplace'), disabled: () => !canSearch, action: () => doFind('replace') },
+        { type: 'item', label: t('menuReplace'), shortcut: 'Ctrl+H', disabled: () => !canSearch, action: () => doFind('replace') },
       ],
     },
     {
       label: t('menuView'),
       items: [
         {
-          // 显示 ▸ 行号/空格/制表符/换行符（Notepad++ 显示符号风格）
+          // 显示符号 ▸ 行号/空格/制表符/换行符（Notepad++ 显示符号风格）
           type: 'item',
           label: t('menuDisplay'),
-          valueText: () => displayValueText(),
-          children: [
-            {
-              type: 'radio',
+          children: [            {
+              type: 'checkbox',
               label: t('menuLineNumbers'),
-              radioGroup: 'display',
-              selected: () => store.showLineNumbers,
+              checked: () => store.showLineNumbers,
               action: () => store.setShowLineNumbers(!store.showLineNumbers),
             },
-            { type: 'sep' },
             {
-              type: 'radio',
+              type: 'checkbox',
               label: t('showSpacesLabel'),
-              radioGroup: 'display',
-              selected: () => store.showSpaces,
+              checked: () => store.showSpaces,
               action: () => store.setShowSpaces(!store.showSpaces),
             },
             {
-              type: 'radio',
+              type: 'checkbox',
               label: t('showTabsLabel'),
-              radioGroup: 'display',
-              selected: () => store.showTabs,
+              checked: () => store.showTabs,
               action: () => store.setShowTabs(!store.showTabs),
             },
             {
-              type: 'radio',
+              type: 'checkbox',
               label: t('showLineEndingsLabel'),
-              radioGroup: 'display',
-              selected: () => store.showLineBreaks,
+              checked: () => store.showLineBreaks,
               action: () => store.setShowLineBreaks(!store.showLineBreaks),
             },
           ],
         },
-        { type: 'checkbox', label: t('preview'), checked: () => props.previewOpen, disabled: () => !store.activeTab?.isMarkdown, action: () => { openMenu.value = null; emit('togglePreview'); } },
+        {
+          // 缩进风格 ▸ 具体选项勾选：空格 2/4/8 或 制表符。
+          // 父项右侧按当前选择显示：空格 2/4/8 或 制表符。
+          type: 'item',
+          label: t('menuIndent'),
+          valueText: () => (store.indentMode === 'spaces' ? `${t('menuIndentSpaces')} ${store.indentWidth}` : t('menuIndentTabFixed')),
+          children: [
+            { type: 'checkbox', label: `${t('menuIndentSpaces')} 2`, checked: () => store.indentMode === 'spaces' && store.indentWidth === 2, action: () => store.setIndentMode('spaces', 2) },
+            { type: 'checkbox', label: `${t('menuIndentSpaces')} 4`, checked: () => store.indentMode === 'spaces' && store.indentWidth === 4, action: () => store.setIndentMode('spaces', 4) },
+            { type: 'checkbox', label: `${t('menuIndentSpaces')} 8`, checked: () => store.indentMode === 'spaces' && store.indentWidth === 8, action: () => store.setIndentMode('spaces', 8) },
+            { type: 'checkbox', label: t('menuIndentTabFixed'), checked: () => store.indentMode === 'tabs', action: () => store.setIndentMode('tabs', 4) },
+          ],
+        },
         { type: 'checkbox', label: t('menuWordWrap'), checked: () => store.lineWrapping, action: () => store.setLineWrapping(!store.lineWrapping) },
         { type: 'sep' },
         {
-          // 缩进 ▸ 空格（点击循环 2→4→8→2）/ 制表符（固定 4）
-          // 父项右侧按当前选择显示：空格 2/4/8 或 制表符。循环项无圆点。
+          // 主题 ▸ 自动（跟随宿主系统）/浅色/深色，存配置表默认自动。
+          // 父项右侧显示当前模式；描述始终为所选模式名（自动不附解析结果）。
           type: 'item',
-          label: t('menuIndent'),
-          valueText: () => (store.indentMode === 'spaces' ? `${t('menuIndentSpacesCycle')} ${store.indentWidth}` : t('menuIndentTabFixed')),
+          label: t('menuTheme'),
+          valueText: () => store.themeMode === 'auto' ? t('themeAuto')
+            : store.themeMode === 'light' ? t('themeLight') : t('themeDark'),
           children: [
-            {
-              type: 'item',
-              label: t('menuIndentSpacesCycle'),
-              cycle: true,
-              action: () => store.cycleIndentWidth(),
-            },
-            {
-              type: 'item',
-              label: t('menuIndentTabFixed'),
-              cycle: true,
-              action: () => store.setIndentMode('tabs', 4),
-            },
+            { type: 'checkbox', label: t('themeAuto'), checked: () => store.themeMode === 'auto', action: () => store.setThemeMode('auto') },
+            { type: 'checkbox', label: t('themeLight'), checked: () => store.themeMode === 'light', action: () => store.setThemeMode('light') },
+            { type: 'checkbox', label: t('themeDark'), checked: () => store.themeMode === 'dark', action: () => store.setThemeMode('dark') },
           ],
         },
-        { type: 'sep' },
         {
-          // 字号：点击循环 12→14→16→18→20→12。数值右置（valueText），对齐缩进渲染。
-          type: 'item',
-          label: t('menuFontSizeItem'),
-          valueText: () => `${store.fontSize}`,
-          cycle: true,
-          action: () => store.cycleFontSize(),
-        },
-        {
-          // 字体：子菜单单选内置字体（默认 JetBrains Mono）。父项右置当前字体名。
+          // 字体：子菜单勾选内置字体（默认 JetBrains Mono）。父项右置当前字体名。
           type: 'item',
           label: t('menuFont'),
           valueText: () => store.builtinFonts.find(f => f.id === store.fontFamily)?.name ?? store.fontFamily,
           children: store.builtinFonts.map(f => ({
-            type: 'radio' as const,
+            type: 'checkbox' as const,
             label: f.name,
-            radioGroup: 'font',
-            selected: () => store.fontFamily === f.id,
+            checked: () => store.fontFamily === f.id,
             action: () => store.setFontFamily(f.id),
+          })),
+        },
+        {
+          // 字号 ▸ 具体选项勾选（12/14/16/18/20）。数值右置（valueText），对齐缩进渲染。
+          type: 'item',
+          label: t('menuFontSizeItem'),
+          valueText: () => `${store.fontSize}`,
+          children: [12, 14, 16, 18, 20].map(n => ({
+            type: 'checkbox' as const,
+            label: `${n}`,
+            checked: () => store.fontSize === n,
+            action: () => store.setFontSize(n),
           })),
         },
       ],
@@ -219,7 +203,6 @@ const menus = computed<Menu[]>((): Menu[] => {
     {
       label: t('menuHelp'),
       items: [
-        { type: 'item', label: t('menuShortcuts'), action: () => { openMenu.value = null; emit('shortcuts'); } },
         { type: 'item', label: t('menuAbout'), action: () => { openMenu.value = null; emit('about'); } },
         { type: 'sep' },
         { type: 'item', label: t('menuReset'), action: doReset },
@@ -232,22 +215,11 @@ const menus = computed<Menu[]>((): Menu[] => {
 
 const openMenu = ref<number | null>(null);
 const subOpen = ref<number | null>(null); // 当前展开的二级子菜单（父项 index）
-// 点击反馈：记录正在闪烁的菜单项标识（150ms 后清除，CSS 动画渐出）。
-const flashItem = ref<string>('');
-let flashTimer: number | undefined;
-function flashOf(item: MenuItem): string {
-  return item.label ?? '';
-}
 function onItemClick(item: MenuItem) {
   item.action?.();
-  if (item.cycle) {
-    flashItem.value = flashOf(item);
-    window.clearTimeout(flashTimer);
-    flashTimer = window.setTimeout(() => (flashItem.value = ''), 180);
-  }
 }
 // keepOpen 计数：子菜单点击后不关闭面板（响应式触发重渲染以刷新 valueText/
-// selected），点击非循环项（如另一模式）或外部/Esc 时才关闭。
+// selected），点击其他模式或外部/Esc 时才关闭。
 const keepOpenCount = ref(0);
 const rootEl = ref<HTMLElement | null>(null);
 
@@ -315,12 +287,11 @@ void lang;
                     disabled: child.disabled?.(),
                     radio: child.type === 'radio',
                     selected: child.type === 'radio' && child.selected?.(),
-                    flash: child.cycle && flashItem === child.label,
                   }"
                   :disabled="child.disabled?.()"
                   @click.stop="onItemClick(child); keepOpenCount++; subOpen = iidx"
                 >
-                  <span class="m-mark">{{ child.type === 'radio' ? (child.selected?.() ? '●' : '○') : '' }}</span>
+                  <span class="m-mark">{{ child.type === 'checkbox' ? (child.checked?.() ? '✓' : '') : child.type === 'radio' ? (child.selected?.() ? '●' : '○') : '' }}</span>
                   <span class="m-text">{{ child.label }}</span>
                   <span v-if="child.shortcut" class="m-shortcut">{{ child.shortcut }}</span>
                 </button>
@@ -335,7 +306,6 @@ void lang;
               checked: item.type === 'checkbox' && item.checked?.(),
               radio: item.type === 'radio',
               selected: item.type === 'radio' && item.selected?.(),
-              flash: item.cycle && flashItem === item.label,
             }"
             :disabled="item.disabled?.()"
             @click.stop="onItemClick(item)"
@@ -409,15 +379,6 @@ void lang;
 .m-shortcut { color: #888; font-size: 11px; }
 
 .m-sep { height: 1px; background: var(--border); margin: 4px 8px; }
-
-/* 循环项点击反馈：accent 闪烁 180ms 渐出 */
-.m-item.flash {
-  animation: mflash 180ms ease-out;
-}
-@keyframes mflash {
-  from { background: rgba(255, 255, 255, 0.18); }
-  to { background: transparent; }
-}
 
 /* 二级子菜单 */
 .m-has-sub { position: relative; cursor: pointer; }

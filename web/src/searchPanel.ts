@@ -15,13 +15,21 @@ import { t } from './i18n';
 /**
  * 菜单「查找…/替换…」入口：打开官方搜索面板并把焦点放到对应输入框。
  * PanelRefs 桥接：createPanel 闭包创建时注册当前面板的输入框引用。
+ *
+ * 替换行展开/收起：replaceExpanded 为会话级记忆（本次页面内保持上次的模式）；
+ * 查找模式只显示搜索行，替换模式展开替换行。applyReplaceMode 由面板 mount
+ * 注册，openSearch 在面板已打开时可即时切换模式。
  */
 let activeRefs: { search: HTMLInputElement; replace: HTMLInputElement } | null = null;
+let replaceExpanded = false;
+let applyReplaceMode: ((v: boolean) => void) | null = null;
 
 export function openSearch(view: EditorView, mode: 'find' | 'replace') {
+  replaceExpanded = mode === 'replace';
   openSearchPanel(view);
   // 面板可能刚创建：等一帧让 mount 完成。
   requestAnimationFrame(() => {
+    applyReplaceMode?.(replaceExpanded);
     const target = mode === 'replace' ? activeRefs?.replace : activeRefs?.search;
     if (target) {
       target.focus();
@@ -94,10 +102,15 @@ export function createSearchPanel(): (view: EditorView) => Panel {
     refs.caseBtn = toggle('omni-tcase', 'Aa', t('matchCase'));
     refs.regexpBtn = toggle('omni-tregexp', '.*', t('regexp'));
     refs.wordBtn = toggle('omni-tword', '「」', t('wholeWord'));
+
+    // 替换行展开/收起切换钮（▾ 展开 / ▴ 收起，aria-pressed 亮起=已展开）
+    const expandBtn = toggle('omni-texpand', replaceExpanded ? '▴' : '▾', t('toggleReplace'));
+    expandBtn.setAttribute('aria-pressed', replaceExpanded ? 'true' : 'false');
+
     const closeBtn = btn('✕', t('closeSearch'), 'omni-close');
     closeBtn.addEventListener('mousedown', (e) => { e.preventDefault(); closeSearchPanel(view); });
 
-    row1.append(refs.searchInput, nav, refs.caseBtn, refs.regexpBtn, refs.wordBtn, closeBtn);
+    row1.append(refs.searchInput, nav, refs.caseBtn, refs.regexpBtn, refs.wordBtn, expandBtn, closeBtn);
 
     // ---- 替换行 ----
     const row2 = document.createElement('div');
@@ -120,7 +133,22 @@ export function createSearchPanel(): (view: EditorView) => Panel {
     refs.countEl.textContent = '';
 
     row2.append(refs.replaceInput, actions, refs.countEl);
+    row2.style.display = replaceExpanded ? '' : 'none'; // 初始模式：查找=收起，替换=展开
     root.append(row1, row2);
+
+    /** 切换替换行显隐并联动按钮态/焦点。 */
+    function setExpanded(v: boolean) {
+      replaceExpanded = v;
+      row2.style.display = v ? '' : 'none';
+      expandBtn.textContent = v ? '▴' : '▾';
+      expandBtn.setAttribute('aria-pressed', v ? 'true' : 'false');
+      if (v) refs.replaceInput.focus();
+      else refs.searchInput.focus();
+    }
+    expandBtn.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      setExpanded(!replaceExpanded);
+    });
 
     // ---- 状态与派发 ----
     // 所有 DOM 引用统一走 safe() 守卫：任何一处缺失只降级功能，绝不让
@@ -193,10 +221,22 @@ export function createSearchPanel(): (view: EditorView) => Panel {
     refs.searchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); findNext(view); }
       else if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); findPrevious(view); }
+      else if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+        // 面板输入框不经 CM keymap：手动接管，否则落到浏览器默认查找。
+        e.preventDefault();
+        refs.searchInput.select();
+      }
+      else if ((e.ctrlKey || e.metaKey) && (e.key === 'h' || e.key === 'H')) { e.preventDefault(); setExpanded(!replaceExpanded); }
       else if (e.key === 'Escape') { e.preventDefault(); closeSearchPanel(view); }
     });
     refs.replaceInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); replaceNext(view); }
+      else if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault();
+        refs.searchInput.focus();
+        refs.searchInput.select();
+      }
+      else if ((e.ctrlKey || e.metaKey) && (e.key === 'h' || e.key === 'H')) { e.preventDefault(); setExpanded(!replaceExpanded); }
       else if (e.key === 'Escape') { e.preventDefault(); closeSearchPanel(view); }
     });
 
@@ -217,6 +257,7 @@ export function createSearchPanel(): (view: EditorView) => Panel {
       mount() {
         // 注册面板引用（菜单 openSearch 用）；面板关闭时由 Panel destroy 清理。
         activeRefs = { search: refs.searchInput, replace: refs.replaceInput };
+        applyReplaceMode = setExpanded; // openSearch 即时切换替换行模式
         // focus/select 逐个守卫：面板挂载异常绝不能沿 update 链传播。
         try {
           refs.searchInput?.focus();
@@ -229,6 +270,7 @@ export function createSearchPanel(): (view: EditorView) => Panel {
       },
       destroy() {
         if (activeRefs && activeRefs.search === refs.searchInput) activeRefs = null;
+        applyReplaceMode = null;
       },
       update(u) {
         // 官方 keymap/外部 effect 改了 query 时回填 UI

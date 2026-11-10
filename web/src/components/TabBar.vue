@@ -11,7 +11,7 @@ import ContextMenu from './ContextMenu.vue';
  *   - 渐隐用「不随内容滚动的叠加渐变层」而非 mask-image——滚动容器上的 mask
  *     在 Chromium 每帧强制重绘（NAS 弱 GPU 明显卡顿），叠加层纯合成零重绘；
  *   - 切换标签时活动页自动滚入可视区；「＋」固定右端不随滚动；
- *   - 右键标签：先激活该标签，再弹自定义上下文菜单（保存/关闭/关闭右侧所有）。
+ *   - 右键标签：先激活该标签，再弹自定义上下文菜单（关闭/关闭右侧所有）。
  */
 
 const store = useEditorStore();
@@ -31,17 +31,12 @@ function onTabContextmenu(e: MouseEvent, id: number) {
   ctxMenu.value = { x: e.clientX, y: e.clientY, tabId: id };
 }
 
-/** 右键菜单项：保存 / 关闭 / 关闭右侧所有。 */
+/** 右键菜单项：关闭 / 关闭右侧所有。 */
 const ctxItems = computed(() => {
   const id = ctxMenu.value?.tabId;
   const tab = id != null ? store.tabById(id) : null;
   const idx = tab ? store.tabs.findIndex(tb => tb.id === tab.id) : -1;
   return [
-    {
-      label: t('menuSave'),
-      disabled: !tab || tab.readonly || (!!tab.path && !tab.dirty),
-      action: () => { if (id != null) void store.saveTab(id); },
-    },
     {
       label: t('close'),
       danger: !!tab?.dirty,
