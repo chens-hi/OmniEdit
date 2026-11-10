@@ -19,6 +19,18 @@ const tabsEl = ref<HTMLElement | null>(null);
 const fadeLeft = ref(false);
 const fadeRight = ref(false);
 
+/**
+ * 竖滚轮转横滚（事件挂在 .tabbar，悬浮在「＋」上也能滚）。
+ * 平滑化：滚轮事件只累加目标位置，rAF 指数逼近——离散的 100px/格 跳变
+ * 变成连续滑动（瞬时赋值在快速连滚时表现为抖动/跳跃感）。
+ * 只在真正处理时 preventDefault（未溢出放行，不吞事件）；
+ * deltaMode 归一化：Firefox 行/页模式换算成像素。
+ */
+
+/** 平滑滚动状态：目标位置 + rAF 句柄。 */
+let scrollTarget = 0;
+let rafId = 0;
+
 function updateFade() {
   const el = tabsEl.value;
   if (!el) return;
@@ -26,21 +38,40 @@ function updateFade() {
   fadeRight.value = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
 }
 
-/**
- * 竖滚轮转横滚。事件挂在 .tabbar（悬浮在「＋」上也能滚）。
- * 只在真正处理时 preventDefault（未溢出放行，不吞事件）；
- * deltaMode 归一化：Firefox 行/页模式换算成像素。
- */
+function stopSmooth() {
+  if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+}
+
+function startSmooth() {
+  if (rafId) return; // 动画已在跑：新事件只改 target，循环下一帧自然接管
+  const step = () => {
+    const el = tabsEl.value;
+    if (!el) { rafId = 0; return; }
+    const diff = scrollTarget - el.scrollLeft;
+    if (Math.abs(diff) < 1) {
+      el.scrollLeft = scrollTarget;
+      rafId = 0;
+      return;
+    }
+    el.scrollLeft += diff * 0.28; // 指数逼近：每帧吃掉剩余距离的 28%
+    rafId = requestAnimationFrame(step);
+  };
+  rafId = requestAnimationFrame(step);
+}
+
 function onWheel(e: WheelEvent) {
   const el = tabsEl.value;
   if (!el) return;
-  if (el.scrollWidth <= el.clientWidth + 2) return; // 未溢出
+  const max = el.scrollWidth - el.clientWidth;
+  if (max <= 0) return; // 未溢出：放行，不吞事件
   let delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
   if (!delta) return;
   e.preventDefault();
-  if (e.deltaMode === 1) delta *= 33;        // 行
+  if (e.deltaMode === 1) delta *= 33;                   // 行
   else if (e.deltaMode === 2) delta *= el.clientHeight; // 页
-  el.scrollLeft += delta;
+  if (!rafId) scrollTarget = el.scrollLeft;             // 新一轮滚动从当前位置起
+  scrollTarget = Math.min(max, Math.max(0, scrollTarget + delta));
+  startSmooth();
 }
 
 let ro: ResizeObserver | undefined;
@@ -49,9 +80,13 @@ onMounted(() => {
   if (tabsEl.value) ro.observe(tabsEl.value);
   updateFade();
 });
-onBeforeUnmount(() => ro?.disconnect());
+onBeforeUnmount(() => {
+  ro?.disconnect();
+  stopSmooth();
+});
 
 // 活动标签变化 / 开关标签后：把活动页滚入可视区 + 刷新边缘渐变。
+// 先取消进行中的平滑动画再定位，避免动画与自动定位互相拉扯（抖动的另一来源）。
 // 手动改 scrollLeft 而非 scrollIntoView，避免波及任何祖先容器的滚动。
 watch(() => [store.activeId, store.tabs.length], async () => {
   await nextTick();
@@ -61,8 +96,15 @@ watch(() => [store.activeId, store.tabs.length], async () => {
   if (!c || !el) return;
   const l = el.offsetLeft;
   const r = l + el.offsetWidth;
-  if (l < c.scrollLeft) c.scrollLeft = l;
-  else if (r > c.scrollLeft + c.clientWidth) c.scrollLeft = r - c.clientWidth;
+  let target = c.scrollLeft;
+  if (l < target) target = l;
+  else if (r > target + c.clientWidth) target = r - c.clientWidth;
+  if (target !== c.scrollLeft) {
+    stopSmooth();
+    scrollTarget = target;
+    c.scrollLeft = target; // 切换标签要即时响应，不做动画
+  }
+  updateFade();
 });
 </script>
 

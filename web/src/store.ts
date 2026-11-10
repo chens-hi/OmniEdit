@@ -39,6 +39,13 @@ export const PREF_DEFAULTS = {
 
 export type PrefKey = keyof typeof PREF_KEYS;
 
+/**
+ * 单窗口最大标签数（VS Code 同思路：到上限提示阻止新开，绝不自动关闭）。
+ * 动机：内存本身炸不了（超大文件有 256KB 截断，20 标签最坏 ~10MB），真正的
+ * 风险是 session.tabs 路径列表把 prefs 撑破 64KB 上限、以及 DOM/可用性。
+ */
+export const MAX_TABS = 20;
+
 /** 会话 KEY：记录「打开未关闭」的标签，下次自动恢复（VS Code 式会话还原）。 */
 const SESSION_KEY = 'session';
 const SESSION_TABS = 'tabs';
@@ -255,7 +262,12 @@ export const useEditorStore = defineStore('editor', () => {
     if (msg) status.value = t('error');
   }
 
-  function newUntitled(): Tab {
+  function newUntitled(): Tab | null {
+    // 标签数上限：拒绝新开（提示在状态栏），绝不自动关闭已有标签。
+    if (tabs.value.length >= MAX_TABS) {
+      setError(t('tabLimitReached').replace('{n}', String(MAX_TABS)));
+      return null;
+    }
     untitledSeq += 1;
     const draft: Tab = {
       id: ++tabSeq,
@@ -275,12 +287,16 @@ export const useEditorStore = defineStore('editor', () => {
     return tab;
   }
 
-  /** 打开文件（已打开则激活）。 */
+  /** 打开文件（已打开则激活；标签数达上限时拒绝并提示）。 */
   async function openFile(path: string) {
     setError('');
     const existing = tabs.value.find(tb => tb.path === path);
     if (existing) {
       activeId.value = existing.id;
+      return;
+    }
+    if (tabs.value.length >= MAX_TABS) {
+      setError(t('tabLimitReached').replace('{n}', String(MAX_TABS)));
       return;
     }
     const draft: Tab = {
@@ -559,11 +575,13 @@ export const useEditorStore = defineStore('editor', () => {
       lastSaveDir.value = pick(PREF_KEYS.lastSaveDir, lastSaveDir.value);
     }
 
-    // 恢复会话：后端 session（唯一来源）。
+    // 恢复会话：后端 session（唯一来源）。旧版本会话可能超过标签上限：
+    // 按上限裁剪恢复，超限时回写一次收敛持久化体积（否则 prefs 持续超限）。
     const sess = (prefs[SESSION_KEY] ?? null) as
       | { [SESSION_TABS]?: string[]; [SESSION_ACTIVE]?: string }
       | null;
-    const paths = Array.isArray(sess?.[SESSION_TABS]) ? sess![SESSION_TABS]! : [];
+    const allPaths = Array.isArray(sess?.[SESSION_TABS]) ? sess![SESSION_TABS]! : [];
+    const paths = allPaths.slice(0, MAX_TABS);
     if (!paths.length) return { hasSession: false, activePath: '' };
 
     restoreGuard = true;
@@ -580,6 +598,7 @@ export const useEditorStore = defineStore('editor', () => {
     } finally {
       restoreGuard = false;
     }
+    if (allPaths.length > MAX_TABS) persistSession();
     return { hasSession: true, activePath: want || paths[paths.length - 1] };
   }
 
