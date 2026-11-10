@@ -10,6 +10,8 @@
   --ws-line-color: rgba(255, 255, 255, 0.25);
   --ws-mark-color: rgba(255, 255, 255, 0.38);
   --ws-soft-color: rgba(100, 150, 255, 0.55);
+  /* 空白符号覆盖层 */
+  --ws-overlay-z: 5;
 }
 
 /* 浅色主题：宿主为 light 时通过 html[data-theme="light"] 激活。 */

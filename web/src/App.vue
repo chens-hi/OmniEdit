@@ -16,7 +16,7 @@ import { initTheme, theme } from './theme';
 import { initLang, t, lang } from './i18n';
 import { startFileWatch } from './fileWatch';
 import { createSearchPanel, openSearch } from './searchPanel';
-import { whitespaceExtensions } from './whitespace';
+import { createWhitespaceOverlay, type WhitespaceOverlay } from './whitespace';
 import MenuBar from './components/MenuBar.vue';
 import TabBar from './components/TabBar.vue';
 import MarkdownPreview from './components/MarkdownPreview.vue';
@@ -41,16 +41,15 @@ const indentCompartment = new Compartment();
 const fontCompartment = new Compartment();
 const wrapCompartment = new Compartment();
 const lineNoCompartment = new Compartment();
-// 空白符号可见化（显示 ▸ 菜单驱动）
-const whitespaceCompartment = new Compartment();
+// 空白符号覆盖层（显示 ▸ 菜单驱动；挂载于 mountEditor 后，独立于 CM 文本流）
+let wsOverlay: WhitespaceOverlay | null = null;
 
-function buildWhitespaceExts(): Extension[] {
-  const cfg = {
+function wsCfg() {
+  return {
     showSpaces: store.showSpaces,
     showTabs: store.showTabs,
     showLineBreaks: store.showLineBreaks,
   };
-  return whitespaceExtensions(() => ({ ...cfg }));
 }
 
 /** 缩进扩展组合：空格模式 = indentUnit 指定空格 + tabSize 渲染宽度；Tab 模式 = 制表符。 */
@@ -131,13 +130,19 @@ function mountEditor(tab: { id: number; content: string; path: string; name: str
       fontCompartment.of(buildFontExts()),
       wrapCompartment.of(buildWrapExts()),
       lineNoCompartment.of(buildLineNoExts()),
-      whitespaceCompartment.of(buildWhitespaceExts()),
       updateListener,
     ],
     doc: tab.content,
   });
   // debug 钩子：排障/自动化测试用（必须在 new EditorView 之后赋值）
   (window as unknown as { __omnieditView?: EditorView | null }).__omnieditView = view;
+  // 空白符号覆盖层（编辑器销毁时同步销毁）
+  wsOverlay?.destroy();
+  wsOverlay = createWhitespaceOverlay(
+    document.getElementById('editor-host') ?? host,
+    view,
+    wsCfg,
+  );
   syncCursor(view.state);
 }
 
@@ -334,7 +339,7 @@ watch(() => store.showLineNumbers, () => {
   view?.dispatch({ effects: lineNoCompartment.reconfigure(buildLineNoExts()) });
 });
 watch(() => [store.showSpaces, store.showTabs, store.showLineBreaks], () => {
-  view?.dispatch({ effects: whitespaceCompartment.reconfigure(buildWhitespaceExts()) });
+  wsOverlay?.refresh();
 });
 
 onMounted(async () => {
