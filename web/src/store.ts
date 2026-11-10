@@ -14,7 +14,7 @@ export const PREF_KEYS = {
   indentMode: 'indentMode',
   indentWidth: 'indentWidth',
   fontSize: 'fontSize',
-  fontStyle: 'fontStyle', // 存的是字体 id（BUILTIN_FONTS），非 CSS font-style
+  fontFamily: 'fontFamily', // 存的是字体 id（BUILTIN_FONTS），与 CSS font-family 语义对齐
   lineWrapping: 'lineWrapping',
   showLineNumbers: 'showLineNumbers',
   showSpaces: 'showSpaces',
@@ -28,7 +28,7 @@ export const PREF_DEFAULTS = {
   indentMode: 'spaces' as IndentMode,
   indentWidth: 4,
   fontSize: 16,
-  fontStyle: DEFAULT_FONT_ID, // 默认 JetBrains Mono
+  fontFamily: DEFAULT_FONT_ID, // 默认 JetBrains Mono
   lineWrapping: true,
   showLineNumbers: true,
   showSpaces: false,
@@ -120,8 +120,8 @@ export const useEditorStore = defineStore('editor', () => {
   const indentMode = ref<IndentMode>(PREF_DEFAULTS.indentMode);
   const indentWidth = ref<number>(PREF_DEFAULTS.indentWidth);
   const fontSize = ref<number>(PREF_DEFAULTS.fontSize);
-  // 编辑器字体（存 fontStyle = 字体 id，引用 fonts.ts 内置注册表；应用 = 写 --font-mono 变量）
-  const fontStyle = ref<string>(PREF_DEFAULTS.fontStyle);
+  // 编辑器字体（存 fontFamily = 字体 id，引用 fonts.ts 内置注册表；应用 = 写 --font-mono 变量）
+  const fontFamily = ref<string>(PREF_DEFAULTS.fontFamily);
   const lineWrapping = ref<boolean>(PREF_DEFAULTS.lineWrapping);
   const showLineNumbers = ref<boolean>(PREF_DEFAULTS.showLineNumbers);
   // 空白符号可见化（Notepad++「显示符号」风格）
@@ -138,7 +138,7 @@ export const useEditorStore = defineStore('editor', () => {
       [PREF_KEYS.indentMode]: indentMode.value,
       [PREF_KEYS.indentWidth]: indentWidth.value,
       [PREF_KEYS.fontSize]: fontSize.value,
-      [PREF_KEYS.fontStyle]: fontStyle.value,
+      [PREF_KEYS.fontFamily]: fontFamily.value,
       [PREF_KEYS.lineWrapping]: lineWrapping.value,
       [PREF_KEYS.showLineNumbers]: showLineNumbers.value,
       [PREF_KEYS.showSpaces]: showSpaces.value,
@@ -184,16 +184,16 @@ export const useEditorStore = defineStore('editor', () => {
     persistPrefs();
   }
   /** 编辑器字体：切到指定内置字体，即时应用（写 --font-mono）并持久化。 */
-  function setFontStyle(id: string) {
-    fontStyle.value = BUILTIN_FONTS.some(f => f.id === id) ? id : DEFAULT_FONT_ID;
-    applyEditorFont(fontStyle.value);
+  function setFontFamily(id: string) {
+    fontFamily.value = BUILTIN_FONTS.some(f => f.id === id) ? id : DEFAULT_FONT_ID;
+    applyEditorFont(fontFamily.value);
     persistPrefs();
   }
   /** 字体循环切换（菜单「字体」项点击）：按内置清单顺序循环。 */
   function cycleFont() {
-    const idx = BUILTIN_FONTS.findIndex(f => f.id === fontStyle.value);
+    const idx = BUILTIN_FONTS.findIndex(f => f.id === fontFamily.value);
     const next = BUILTIN_FONTS[(idx + 1) % BUILTIN_FONTS.length];
-    setFontStyle(next.id);
+    setFontFamily(next.id);
   }
   function setLineWrapping(on: boolean) {
     lineWrapping.value = on;
@@ -546,8 +546,11 @@ export const useEditorStore = defineStore('editor', () => {
       indentMode.value = pick(PREF_KEYS.indentMode, indentMode.value);
       indentWidth.value = pick(PREF_KEYS.indentWidth, indentWidth.value);
       fontSize.value = pick(PREF_KEYS.fontSize, fontSize.value);
-      fontStyle.value = pick(PREF_KEYS.fontStyle, fontStyle.value);
-      applyEditorFont(fontStyle.value);
+      // 字段迁移：旧版用 fontStyle 存字体 id，现改 fontFamily。新键缺失时回落读旧键，
+      // 保证升级前设置过字体的用户不丢配置（写回统一用新键，旧键随覆盖自然淘汰）。
+      const legacyFont = typeof prefs['fontStyle'] === 'string' ? prefs['fontStyle'] as string : undefined;
+      fontFamily.value = pick(PREF_KEYS.fontFamily, legacyFont ?? fontFamily.value);
+      applyEditorFont(fontFamily.value);
       lineWrapping.value = pick(PREF_KEYS.lineWrapping, lineWrapping.value);
       showLineNumbers.value = pick(PREF_KEYS.showLineNumbers, showLineNumbers.value);
       showSpaces.value = pick(PREF_KEYS.showSpaces, showSpaces.value);
@@ -599,8 +602,8 @@ export const useEditorStore = defineStore('editor', () => {
     indentMode.value = PREF_DEFAULTS.indentMode;
     indentWidth.value = PREF_DEFAULTS.indentWidth;
     fontSize.value = PREF_DEFAULTS.fontSize;
-    fontStyle.value = PREF_DEFAULTS.fontStyle;
-    applyEditorFont(fontStyle.value);
+    fontFamily.value = PREF_DEFAULTS.fontFamily;
+    applyEditorFont(fontFamily.value);
     lineWrapping.value = PREF_DEFAULTS.lineWrapping;
     showLineNumbers.value = PREF_DEFAULTS.showLineNumbers;
     showSpaces.value = PREF_DEFAULTS.showSpaces;
@@ -629,9 +632,9 @@ export const useEditorStore = defineStore('editor', () => {
     tabs, activeId, activeTab, activePath, error, status,
     saveAsVisible, lastSaveDir,
     confirmDialog, confirm, settleConfirm,
-    indentMode, indentWidth, fontSize, fontStyle, lineWrapping, showLineNumbers,
+    indentMode, indentWidth, fontSize, fontFamily, lineWrapping, showLineNumbers,
     showSpaces, showTabs, showLineBreaks,
-    setIndentMode, setFontSize, setFontStyle, setLineWrapping, setShowLineNumbers,
+    setIndentMode, setFontSize, setFontFamily, setLineWrapping, setShowLineNumbers,
     setShowSpaces, setShowTabs, setShowLineBreaks,
     cycleIndentWidth, cycleFontSize, cycleFont,
     builtinFonts: BUILTIN_FONTS,

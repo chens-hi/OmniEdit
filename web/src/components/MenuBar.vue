@@ -205,13 +205,13 @@ const menus = computed<Menu[]>((): Menu[] => {
           // 字体：子菜单单选内置字体（默认 JetBrains Mono）。父项右置当前字体名。
           type: 'item',
           label: t('menuFont'),
-          valueText: () => store.builtinFonts.find(f => f.id === store.fontStyle)?.name ?? store.fontStyle,
+          valueText: () => store.builtinFonts.find(f => f.id === store.fontFamily)?.name ?? store.fontFamily,
           children: store.builtinFonts.map(f => ({
             type: 'radio' as const,
             label: f.name,
             radioGroup: 'font',
-            selected: () => store.fontStyle === f.id,
-            action: () => store.setFontStyle(f.id),
+            selected: () => store.fontFamily === f.id,
+            action: () => store.setFontFamily(f.id),
           })),
         },
       ],

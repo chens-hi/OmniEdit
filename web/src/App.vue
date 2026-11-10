@@ -43,7 +43,7 @@ const showPreview = ref(false);
 const showAbout = ref(false);
 const showShortcuts = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.29';
+const appVersion = '0.5.31';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -82,9 +82,12 @@ function buildIndentExts(): Extension[] {
 function buildFontExts(): Extension[] {
   return [EditorView.theme({
     // 编辑器字体走 --font-mono 变量（fonts.css 定义默认栈，applyEditorFont 动态覆盖）。
-    // 用变量而非写死值：切换字体时 applyEditorFont 改一个变量即全局生效，无需重建编辑器。
+    // 关键：CM 的 baseTheme 在 .cm-scroller 上硬编码 fontFamily:"monospace"，
+    // 会盖掉容器(&=.cm-editor)上的设置——必须显式在 .cm-scroller 与行号槽上
+    // 设 var(--font-mono)，JetBrains Mono 才会真正生效。
     '&': { fontSize: `${store.fontSize}px`, fontFamily: 'var(--font-mono)' },
-    '.cm-scroller': { lineHeight: '1.6' },
+    '.cm-scroller': { fontFamily: 'var(--font-mono)', lineHeight: '1.6' },
+    '.cm-gutters': { fontFamily: 'var(--font-mono)' },
   })];
 }
 
