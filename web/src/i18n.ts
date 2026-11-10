@@ -121,6 +121,7 @@ const dict = {
   // 标签栏
   unsaved: { zh: '未保存', en: 'Unsaved' },
   close: { zh: '关闭', en: 'Close' },
+  closeRightAll: { zh: '关闭右侧所有', en: 'Close to the Right' },
   tabLimitReached: {
     zh: '标签数已达上限（{n}），请先关闭部分标签',
     en: 'Tab limit reached ({n}); close some tabs first',

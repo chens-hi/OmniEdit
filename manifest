@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.5.38
+version=0.5.40
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.5.38: 新增全局轻提示 toast（右下角、自动消失、点击关闭，info/success/warning/error 四型主题色条）；标签上限提示与还原完成改走 toast
+changelog=0.5.40: 页签支持拖拽排序——光标左右半区决定插入位置，accent 指示线提示落点，拖到末尾空隙移到最右；自定义顺序写入会话持久化

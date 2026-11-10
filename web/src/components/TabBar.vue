@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useEditorStore } from '../store';
 import { t } from '../i18n';
+import ContextMenu from './ContextMenu.vue';
 
 /**
  * 标签栏多标签策略（VS Code 风）：
@@ -9,7 +10,8 @@ import { t } from '../i18n';
  *   - 超出下限后横向滚动：原生滚动条隐藏，滚轮横滚 + 边缘渐变提示；
  *   - 渐隐用「不随内容滚动的叠加渐变层」而非 mask-image——滚动容器上的 mask
  *     在 Chromium 每帧强制重绘（NAS 弱 GPU 明显卡顿），叠加层纯合成零重绘；
- *   - 切换标签时活动页自动滚入可视区；「＋」固定右端不随滚动。
+ *   - 切换标签时活动页自动滚入可视区；「＋」固定右端不随滚动；
+ *   - 右键标签：先激活该标签，再弹自定义上下文菜单（保存/关闭/关闭右侧所有）。
  */
 
 const store = useEditorStore();
@@ -18,6 +20,98 @@ const tabsEl = ref<HTMLElement | null>(null);
 /** 溢出状态：驱动左右边缘渐变层显隐（未溢出时不遮挡首尾标签）。 */
 const fadeLeft = ref(false);
 const fadeRight = ref(false);
+
+// ---- 页签右键菜单 ----
+const ctxMenu = ref<{ x: number; y: number; tabId: number } | null>(null);
+
+/** 右键即激活该标签（VS Code 同行为），再在光标处弹菜单。 */
+function onTabContextmenu(e: MouseEvent, id: number) {
+  e.preventDefault();
+  store.activeId = id;
+  ctxMenu.value = { x: e.clientX, y: e.clientY, tabId: id };
+}
+
+/** 右键菜单项：保存 / 关闭 / 关闭右侧所有。 */
+const ctxItems = computed(() => {
+  const id = ctxMenu.value?.tabId;
+  const tab = id != null ? store.tabById(id) : null;
+  const idx = tab ? store.tabs.findIndex(tb => tb.id === tab.id) : -1;
+  return [
+    {
+      label: t('menuSave'),
+      disabled: !tab || tab.readonly || (!!tab.path && !tab.dirty),
+      action: () => { if (id != null) void store.saveTab(id); },
+    },
+    {
+      label: t('close'),
+      danger: !!tab?.dirty,
+      action: () => { if (id != null) void store.closeTab(id); },
+    },
+    {
+      label: t('closeRightAll'),
+      disabled: idx < 0 || idx >= store.tabs.length - 1,
+      action: () => { if (id != null) void store.closeTabsToRight(id); },
+    },
+  ];
+});
+
+// ---- 拖拽排序（HTML5 DnD：鼠标/触摸板可用，触摸屏不支持——fnOS 桌面场景足够）----
+const draggingId = ref<number | null>(null);
+/** 放置指示：目标标签 + 插入侧（光标在目标左半=插其前，右半=插其后）。 */
+const dragOver = ref<{ id: number; side: 'before' | 'after' } | null>(null);
+
+function onDragStart(e: DragEvent, id: number) {
+  draggingId.value = id;
+  e.dataTransfer?.setData('text/plain', String(id)); // Firefox 需要数据才启动拖拽
+  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+}
+
+function onDragOver(e: DragEvent, id: number) {
+  if (draggingId.value === null || draggingId.value === id) return;
+  e.preventDefault(); // 允许 drop
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  dragOver.value = { id, side: e.clientX < rect.left + rect.width / 2 ? 'before' : 'after' };
+}
+
+function onDrop(e: DragEvent, id: number) {
+  e.preventDefault();
+  const over = dragOver.value;
+  if (draggingId.value !== null && over?.id === id) moveTab(draggingId.value, id, over.side);
+  clearDrag();
+}
+
+/** 拖到标签条空白处（末尾间隙）：放到最右。 */
+function onContainerDragOver(e: DragEvent) {
+  if (draggingId.value === null || e.target !== tabsEl.value) return;
+  e.preventDefault();
+  const last = store.tabs[store.tabs.length - 1];
+  if (last && last.id !== draggingId.value) dragOver.value = { id: last.id, side: 'after' };
+}
+function onContainerDrop(e: DragEvent) {
+  if (draggingId.value === null || e.target !== tabsEl.value) return;
+  e.preventDefault();
+  const last = store.tabs[store.tabs.length - 1];
+  if (last && last.id !== draggingId.value) moveTab(draggingId.value, last.id, 'after');
+  clearDrag();
+}
+
+function onDragEnd() { clearDrag(); }
+function clearDrag() { draggingId.value = null; dragOver.value = null; }
+
+/** 调整标签顺序（store.tabs 直接 splice，响应式）并持久化会话（顺序进 session.tabs）。 */
+function moveTab(fromId: number, toId: number, side: 'before' | 'after') {
+  if (fromId === toId) return;
+  const arr = store.tabs;
+  const from = arr.findIndex(t => t.id === fromId);
+  const to = arr.findIndex(t => t.id === toId);
+  if (from < 0 || to < 0 || from === to) return;
+  const [moved] = arr.splice(from, 1);
+  // 移除后目标索引偏移：向右拖 to-1/to，向左拖 to/to+1（分侧）。
+  const insertAt = from < to ? (side === 'before' ? to - 1 : to) : (side === 'before' ? to : to + 1);
+  arr.splice(insertAt, 0, moved);
+  store.persistSession();
+}
 
 /**
  * 竖滚轮转横滚（事件挂在 .tabbar，悬浮在「＋」上也能滚）。
@@ -111,14 +205,31 @@ watch(() => [store.activeId, store.tabs.length], async () => {
 <template>
   <div class="tabbar" @wheel="onWheel">
     <div class="tabs-wrap">
-      <div ref="tabsEl" class="tabs" @scroll="updateFade">
+      <div
+        ref="tabsEl"
+        class="tabs"
+        @scroll="updateFade"
+        @dragover="onContainerDragOver"
+        @drop="onContainerDrop"
+      >
         <div
           v-for="tab in store.tabs"
           :key="tab.id"
           class="tab"
-          :class="{ active: tab.id === store.activeId }"
+          :class="{
+            active: tab.id === store.activeId,
+            dragging: draggingId === tab.id,
+            'drag-before': dragOver?.id === tab.id && dragOver.side === 'before',
+            'drag-after': dragOver?.id === tab.id && dragOver.side === 'after',
+          }"
           :title="tab.path || tab.name"
+          draggable="true"
           @click="store.activeId = tab.id"
+          @contextmenu.prevent="onTabContextmenu($event, tab.id)"
+          @dragstart="onDragStart($event, tab.id)"
+          @dragover="onDragOver($event, tab.id)"
+          @drop="onDrop($event, tab.id)"
+          @dragend="onDragEnd"
         >
           <span class="tab-name">{{ tab.name }}</span>
           <span v-if="tab.dirty" class="tab-dirty" :title="t('unsaved')">●</span>
@@ -130,6 +241,13 @@ watch(() => [store.activeId, store.tabs.length], async () => {
       <div v-show="fadeRight" class="fade fade-r" />
     </div>
     <button class="tab-new" :title="t('newFile')" @click="store.newUntitled()">＋</button>
+    <ContextMenu
+      v-if="ctxMenu"
+      :x="ctxMenu.x"
+      :y="ctxMenu.y"
+      :items="ctxItems"
+      @close="ctxMenu = null"
+    />
   </div>
 </template>
 
@@ -173,6 +291,7 @@ watch(() => [store.activeId, store.tabs.length], async () => {
 .fade-r { right: 0; background: linear-gradient(to left, var(--toolbar-bg), transparent); }
 
 .tab {
+  position: relative;    /* 插入指示线（::before/::after）的定位基准 */
   display: flex;
   align-items: center;
   gap: 6px;
@@ -187,6 +306,20 @@ watch(() => [store.activeId, store.tabs.length], async () => {
   color: var(--fg-muted);
   overflow: hidden;
 }
+/* 拖拽：本体半透明，落点侧亮 accent 指示线（左半区=线在左缘=插其前，反之在后）。 */
+.tab.dragging { opacity: 0.45; }
+.tab.drag-before::before,
+.tab.drag-after::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  background: var(--accent);
+  z-index: 2;
+}
+.tab.drag-before::before { left: 0; }
+.tab.drag-after::after { right: 0; }
 .tab:hover { background: rgba(0, 0, 0, 0.15); }
 html[data-theme="light"] .tab:hover { background: rgba(0, 0, 0, 0.05); }
 .tab.active {

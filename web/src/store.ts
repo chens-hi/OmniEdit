@@ -436,23 +436,35 @@ export const useEditorStore = defineStore('editor', () => {
     toasts.value = toasts.value.filter(x => x.id !== id);
   }
 
-  /** 保存当前活动标签：草稿/无路径 → 打开另存为对话框；否则直存。 */
+  /** 保存当前活动标签（Ctrl+S / 菜单入口）。 */
   async function saveActive() {
     const tab = activeTab.value;
-    if (!tab || tab.readonly) return;
+    if (tab) await saveTab(tab.id);
+  }
+
+  /**
+   * 保存任意标签（页签右键菜单用）：有路径直存；草稿先激活再打开另存为
+   * （另存为对话框面向活动标签，先切换保证语义正确）。
+   * 返回是否已落盘（草稿弹对话框视为未落盘，返回 false）。
+   */
+  async function saveTab(id: number): Promise<boolean> {
+    const tab = tabById(id);
+    if (!tab || tab.readonly) return false;
     setError('');
     if (!tab.path) {
-      // 打开对话框（内容由组件确认后回调 doSaveAs）。
+      activeId.value = tab.id;
       saveAsVisible.value = true;
-      return;
+      return false;
     }
     try {
       const { mtime } = await writeFile(tab.path, tab.content, tab.mtime, tab.hasBom, tab.encoding);
       tab.mtime = mtime;
       tab.dirty = false;
-      status.value = t('saved');
+      status.value = activeId.value === tab.id ? t('saved') : `${t('saved')} ${tab.name}`;
+      return true;
     } catch (e) {
       setError(`${t('saveFailed')}: ${(e as Error).message}`);
+      return false;
     }
   }
 
@@ -483,10 +495,14 @@ export const useEditorStore = defineStore('editor', () => {
     saveAsVisible.value = false;
   }
 
-  async function closeTab(id: number) {
+  /**
+   * 关闭标签。脏标签先经统一确认框（danger），用户取消视为「未关闭」返回 false——
+   * 供批量关闭（关闭右侧所有）据此中止，避免半途取消后继续误关。
+   */
+  async function closeTab(id: number): Promise<boolean> {
     const tab = tabById(id);
-    if (!tab) return;
-    if (tab.dirty && !(await confirm(`${tab.name} ${t('confirmCloseDirty')}`, { danger: true }))) return;
+    if (!tab) return false;
+    if (tab.dirty && !(await confirm(`${tab.name} ${t('confirmCloseDirty')}`, { danger: true }))) return false;
     const idx = tabs.value.findIndex(tb => tb.id === id);
     tabs.value.splice(idx, 1);
     if (activeId.value === id) {
@@ -496,6 +512,20 @@ export const useEditorStore = defineStore('editor', () => {
     if (tab.path) void unwatchFile(tab.path).catch(() => {});
     // 标签集变化 → 持久化会话。
     persistSession();
+    return true;
+  }
+
+  /** 关闭右侧所有标签（页签右键菜单）：从最右往左逐个关闭；用户取消任一脏标签确认即中止。 */
+  async function closeTabsToRight(id: number) {
+    const idx = tabs.value.findIndex(tb => tb.id === id);
+    if (idx < 0) return;
+    // 逆序关闭：splice 按 id 删除，索引不受影响，但逆序语义最稳。
+    for (let i = tabs.value.length - 1; i > idx; i--) {
+      const tab = tabs.value[i];
+      if (!tab) break;
+      const ok = await closeTab(tab.id);
+      if (!ok) break;
+    }
   }
 
   /**
@@ -684,7 +714,7 @@ export const useEditorStore = defineStore('editor', () => {
     cycleIndentWidth, cycleFontSize, cycleFont,
     builtinFonts: BUILTIN_FONTS,
     openViaPicker,
-    openFile, saveActive, closeTab, markDirty, newUntitled, setError,
+    openFile, saveActive, saveTab, closeTab, closeTabsToRight, markDirty, newUntitled, setError,
     doSaveAs, closeSaveAs,
     reloadFile, tabById,
     initPrefs, persistSession, prefsBackendOk, resetToDefaults,
