@@ -22,11 +22,13 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"omniedit/server/internal/files"
 	"omniedit/server/internal/gateway"
 	"omniedit/server/internal/openapi"
+	"omniedit/server/internal/prefs"
 )
 
 // Handler 聚合依赖。
@@ -36,6 +38,8 @@ type Handler struct {
 	Prefix  string
 	// Hub 管理文件变更推送的 WebSocket 连接（可为 nil，此时 WS 接口不可用）。
 	Hub *Hub
+	// Prefs 用户偏好存储（可为 nil，此时 prefs 接口返回 503）。
+	Prefs *prefs.Service
 	// DevAllowAll 仅用于本地开发调试（无网关环境下放行）。
 	// 生产（NAS）环境必须为 false。
 	DevAllowAll bool
@@ -209,3 +213,67 @@ func (h *Handler) Unwatch(w http.ResponseWriter, r *http.Request) {
 
 // logRequestDenied 记录被拒绝的请求（保留日志格式兼容历史排障习惯）。
 var _ = log.Printf
+
+// GetPrefs GET /api/prefs
+// 返回当前网关用户的偏好 JSON。后端不解析字段（偏好结构由前端定义），
+// 只回传原始 JSON 对象；缺失时返回 {}（前端据默认值初始化）。
+func (h *Handler) GetPrefs(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requireGatewayUser(r); !ok {
+		errJSON(w, http.StatusUnauthorized, "未授权：缺少网关用户身份")
+		return
+	}
+	if h.Prefs == nil {
+		errJSON(w, http.StatusServiceUnavailable, "偏好存储未启用")
+		return
+	}
+	uid := gatewayUIDOrDev(r, h)
+	data, err := h.Prefs.Get(uid)
+	if err != nil {
+		errJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// 直接回传原始 JSON（已是合法对象），不再二次封装。
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
+// PutPrefs PUT /api/prefs
+// 保存当前网关用户的偏好。请求体为偏好 JSON 对象，整体覆盖写回；
+// 后端校验「合法 JSON 对象」后原子落盘，不解析具体字段。
+func (h *Handler) PutPrefs(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requireGatewayUser(r); !ok {
+		errJSON(w, http.StatusUnauthorized, "未授权：缺少网关用户身份")
+		return
+	}
+	if h.Prefs == nil {
+		errJSON(w, http.StatusServiceUnavailable, "偏好存储未启用")
+		return
+	}
+	uid := gatewayUIDOrDev(r, h)
+	var raw json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+		errJSON(w, http.StatusBadRequest, "请求体解析失败：需合法 JSON")
+		return
+	}
+	if err := h.Prefs.Set(uid, raw); err != nil {
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "超过上限") || strings.Contains(err.Error(), "非法") || strings.Contains(err.Error(), "对象") {
+			status = http.StatusBadRequest
+		}
+		errJSON(w, status, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// gatewayUIDOrDev 取网关用户 uid；dev 模式无网关身份时兜底 "0"。
+func gatewayUIDOrDev(r *http.Request, h *Handler) string {
+	if u, ok := gateway.FromRequest(r); ok {
+		return u.UID
+	}
+	if h.DevAllowAll {
+		return "0"
+	}
+	return ""
+}

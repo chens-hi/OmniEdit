@@ -1,25 +1,63 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { readFile, writeFile, unwatchFile, type FileMeta } from './api';
+import { readFile, writeFile, unwatchFile, getPrefs, putPrefs, type FileMeta } from './api';
 import { sdk } from './api';
 import { t } from './i18n';
 
-// ---- 编辑器设置（菜单栏驱动，localStorage 持久化） ----
+// ---- 编辑器设置（菜单栏驱动；后端 prefs 持久化，localStorage 作离线兜底） ----
 
 type IndentMode = 'spaces' | 'tabs';
 
-function loadPref<T>(key: string, def: T): T {
+/** 配置项 KEY 常量：统一管理，禁止散落字符串字面量（防手滑拼错）。 */
+export const PREF_KEYS = {
+  indentMode: 'indentMode',
+  indentWidth: 'indentWidth',
+  fontSize: 'fontSize',
+  lineWrapping: 'lineWrapping',
+  showLineNumbers: 'showLineNumbers',
+  showSpaces: 'showSpaces',
+  showTabs: 'showTabs',
+  showLineBreaks: 'showLineBreaks',
+  lastSaveDir: 'lastSaveDir',
+} as const;
+
+/** 默认值：与 KEY 对齐，一屏看全所有配置项（单一事实来源）。 */
+export const PREF_DEFAULTS = {
+  indentMode: 'spaces' as IndentMode,
+  indentWidth: 4,
+  fontSize: 16,
+  lineWrapping: false,
+  showLineNumbers: true,
+  showSpaces: false,
+  showTabs: false,
+  showLineBreaks: false,
+  lastSaveDir: '',
+};
+
+export type PrefKey = keyof typeof PREF_KEYS;
+
+/** 会话 KEY：记录「打开未关闭」的标签，下次自动恢复（VS Code 式会话还原）。 */
+const SESSION_KEY = 'session';
+const SESSION_TABS = 'tabs';
+const SESSION_ACTIVE = 'activePath';
+
+/** localStorage 键前缀（离线兜底缓存用；后端不可用时降级）。 */
+const LS_PREFIX = 'omniedit.pref.';
+
+/** 从 localStorage 读缓存（后端不可用时的兜底值来源）。 */
+function lsGet<T>(key: PrefKey | typeof SESSION_KEY, def: T): T {
   try {
-    const v = localStorage.getItem(`omniedit.pref.${key}`);
+    const v = localStorage.getItem(`${LS_PREFIX}${key}`);
     return v === null ? def : (JSON.parse(v) as T);
   } catch {
     return def;
   }
 }
 
-function savePref(key: string, v: unknown) {
+/** 写 localStorage 缓存（尽力而为，失败不影响功能）。 */
+function lsSet(key: string, v: unknown) {
   try {
-    localStorage.setItem(`omniedit.pref.${key}`, JSON.stringify(v));
+    localStorage.setItem(`${LS_PREFIX}${key}`, JSON.stringify(v));
   } catch { /* 存储失败不影响功能 */ }
 }
 
@@ -95,22 +133,55 @@ export const useEditorStore = defineStore('editor', () => {
   const error = ref<string>('');
   const status = ref<string>(t('ready'));
 
-  // ---- 编辑器设置（菜单栏驱动） ----
-  const indentMode = ref<IndentMode>(loadPref<IndentMode>('indentMode', 'spaces'));
-  const indentWidth = ref<number>(loadPref<number>('indentWidth', 4));
-  const fontSize = ref<number>(loadPref<number>('fontSize', 14));
-  const lineWrapping = ref<boolean>(loadPref<boolean>('lineWrapping', false));
-  const showLineNumbers = ref<boolean>(loadPref<boolean>('showLineNumbers', true));
+  // ---- 编辑器设置（菜单栏驱动；初值 = localStorage 缓存 → 默认值，initPrefs 再用后端值覆盖） ----
+  const indentMode = ref<IndentMode>(lsGet(PREF_KEYS.indentMode, PREF_DEFAULTS.indentMode));
+  const indentWidth = ref<number>(lsGet(PREF_KEYS.indentWidth, PREF_DEFAULTS.indentWidth));
+  const fontSize = ref<number>(lsGet(PREF_KEYS.fontSize, PREF_DEFAULTS.fontSize));
+  const lineWrapping = ref<boolean>(lsGet(PREF_KEYS.lineWrapping, PREF_DEFAULTS.lineWrapping));
+  const showLineNumbers = ref<boolean>(lsGet(PREF_KEYS.showLineNumbers, PREF_DEFAULTS.showLineNumbers));
   // 空白符号可见化（Notepad++「显示符号」风格）
-  const showSpaces = ref<boolean>(loadPref<boolean>('showSpaces', false));
-  const showTabs = ref<boolean>(loadPref<boolean>('showTabs', false));
-  const showLineBreaks = ref<boolean>(loadPref<boolean>('showLineBreaks', false));
+  const showSpaces = ref<boolean>(lsGet(PREF_KEYS.showSpaces, PREF_DEFAULTS.showSpaces));
+  const showTabs = ref<boolean>(lsGet(PREF_KEYS.showTabs, PREF_DEFAULTS.showTabs));
+  const showLineBreaks = ref<boolean>(lsGet(PREF_KEYS.showLineBreaks, PREF_DEFAULTS.showLineBreaks));
+
+  /**
+   * prefsSnapshot 把当前全部偏好收敛成一个对象（后端整体覆盖写回的最小单元）。
+   * KEY 引用常量，新增配置项时在此补一行即可，避免漏存。
+   */
+  function prefsSnapshot(): Record<string, unknown> {
+    return {
+      [PREF_KEYS.indentMode]: indentMode.value,
+      [PREF_KEYS.indentWidth]: indentWidth.value,
+      [PREF_KEYS.fontSize]: fontSize.value,
+      [PREF_KEYS.lineWrapping]: lineWrapping.value,
+      [PREF_KEYS.showLineNumbers]: showLineNumbers.value,
+      [PREF_KEYS.showSpaces]: showSpaces.value,
+      [PREF_KEYS.showTabs]: showTabs.value,
+      [PREF_KEYS.showLineBreaks]: showLineBreaks.value,
+      [PREF_KEYS.lastSaveDir]: lastSaveDir.value,
+    };
+  }
+
+  /** 后端是否可达（决定是否用 localStorage 兜底提示）。initPrefs 时探测。 */
+  const prefsBackendOk = ref<boolean | null>(null);
+
+  /**
+   * persistPrefs 把当前偏好落盘：先写 localStorage 缓存（离线兜底），
+   * 再 fire-and-forget 推到后端（跨浏览器共享）。后端失败静默——编辑器
+   * 不因偏好存储故障而不可用，下次改动会重试。
+   */
+  function persistPrefs() {
+    const snap = prefsSnapshot();
+    for (const [k, v] of Object.entries(snap)) lsSet(k, v);
+    putPrefs(snap)
+      .then(() => { prefsBackendOk.value = true; })
+      .catch(() => { prefsBackendOk.value = false; });
+  }
 
   function setIndentMode(mode: IndentMode, width: number) {
     indentMode.value = mode;
     indentWidth.value = width;
-    savePref('indentMode', mode);
-    savePref('indentWidth', width);
+    persistPrefs();
   }
   /** 空格宽度循环 2→4→8→2（菜单「缩进」项点击）。 */
   function cycleIndentWidth() {
@@ -127,27 +198,27 @@ export const useEditorStore = defineStore('editor', () => {
   }
   function setFontSize(px: number) {
     fontSize.value = px;
-    savePref('fontSize', px);
+    persistPrefs();
   }
   function setLineWrapping(on: boolean) {
     lineWrapping.value = on;
-    savePref('lineWrapping', on);
+    persistPrefs();
   }
   function setShowLineNumbers(on: boolean) {
     showLineNumbers.value = on;
-    savePref('showLineNumbers', on);
+    persistPrefs();
   }
   function setShowSpaces(on: boolean) {
     showSpaces.value = on;
-    savePref('showSpaces', on);
+    persistPrefs();
   }
   function setShowTabs(on: boolean) {
     showTabs.value = on;
-    savePref('showTabs', on);
+    persistPrefs();
   }
   function setShowLineBreaks(on: boolean) {
     showLineBreaks.value = on;
-    savePref('showLineBreaks', on);
+    persistPrefs();
   }
 
   /** 通过宿主文件选择器打开文件（菜单「打开…」；dev 降级 prompt 输路径）。 */
@@ -280,12 +351,14 @@ export const useEditorStore = defineStore('editor', () => {
       if (activeId.value === tab.id) activeId.value = tabs.value[tabs.value.length - 1]?.id ?? 0;
       setError(`${t('openFailed')}: ${(e as Error).message.includes('UTF-8') ? t('notUtf8') : (e as Error).message}`);
     }
+    // 打开/打开失败都会改变标签集 → 即时持久化会话（restoreGuard 期间跳过）。
+    persistSession();
   }
 
   /** 另存为对话框状态：可见性与目标标签（草稿）。 */
   const saveAsVisible = ref(false);
-  /** 上次保存目录（localStorage 持久化，第二次另存免重选）。 */
-  const lastSaveDir = ref(localStorage.getItem('omniedit.lastSaveDir') ?? '');
+  /** 上次保存目录（走 prefs 持久化，第二次另存免重选；跨浏览器共享）。 */
+  const lastSaveDir = ref<string>(lsGet(PREF_KEYS.lastSaveDir, PREF_DEFAULTS.lastSaveDir));
 
   /** 保存当前活动标签：草稿/无路径 → 打开另存为对话框；否则直存。 */
   async function saveActive() {
@@ -315,7 +388,7 @@ export const useEditorStore = defineStore('editor', () => {
     try {
       const { mtime } = await writeFile(target, tab.content, '', tab.hasBom, tab.encoding);
       lastSaveDir.value = target.replace(/[\\/][^\\/]+$/, '');
-      localStorage.setItem('omniedit.lastSaveDir', lastSaveDir.value);
+      persistPrefs();
       // tab 来自 activeTab computed（响应式代理），赋值安全。
       tab.path = target;
       tab.name = fileNameOf(target);
@@ -323,6 +396,8 @@ export const useEditorStore = defineStore('editor', () => {
       tab.mtime = mtime;
       tab.dirty = false;
       status.value = `${t('saved')} ${target}`;
+      // 草稿落盘后成为会话一员（有路径）→ 持久化会话。
+      persistSession();
     } catch (e) {
       setError(`${t('saveFailed')}: ${(e as Error).message}`);
     }
@@ -343,6 +418,8 @@ export const useEditorStore = defineStore('editor', () => {
     }
     // 草稿从未落盘无需 unwatch；已打开文件通知后端释放监控。失败忽略。
     if (tab.path) void unwatchFile(tab.path).catch(() => {});
+    // 标签集变化 → 持久化会话。
+    persistSession();
   }
 
   /**
@@ -378,6 +455,96 @@ export const useEditorStore = defineStore('editor', () => {
     }
   }
 
+  // ---- 会话恢复：记录「打开未关闭」的标签，下次自动还原（VS Code 式） ----
+
+  /** restoreGuard=true 期间不回写会话，避免恢复过程把中间态当作用户操作存盘。 */
+  let restoreGuard = false;
+
+  /**
+   * sessionSnapshot 取当前会话（已落盘标签的路径 + 活动标签）。
+   * 无路径草稿（未保存的无标题）不记——没内容可恢复。
+   */
+  function sessionSnapshot(): Record<string, unknown> | null {
+    const paths = tabs.value.filter(tb => tb.path).map(tb => tb.path);
+    const active = activeTab.value;
+    const activePath = active && active.path ? active.path : (paths[paths.length - 1] ?? '');
+    if (!paths.length) return { [SESSION_TABS]: [], [SESSION_ACTIVE]: '' };
+    return { [SESSION_TABS]: paths, [SESSION_ACTIVE]: activePath };
+  }
+
+  /**
+   * persistSession 把会话快照并入偏好整体写回。
+   * 直接改 tabs/activeId 后调用（openFile/closeTab/doSaveAs），即操作即存，
+   * 不依赖页面卸载（浏览器 unload 阶段 fetch 不可靠）。
+   */
+  function persistSession() {
+    if (restoreGuard) return;
+    const snap = prefsSnapshot();
+    const sess = sessionSnapshot();
+    if (sess) {
+      snap[SESSION_KEY] = sess;
+      lsSet(SESSION_KEY, sess); // 离线兜底缓存
+    }
+    putPrefs(snap)
+      .then(() => { prefsBackendOk.value = true; })
+      .catch(() => { prefsBackendOk.value = false; });
+  }
+
+  /**
+   * initPrefs 启动时从后端拉偏好并恢复会话。
+   * 顺序：先取偏好填充各项 → 再按 session.tabs 逐个 openFile → 定位活动标签。
+   * 返回是否存在可恢复的会话，供 App.vue 决定是否还要打开 URL ?path= 或新建草稿。
+   * 后端失败不阻塞：各项保持 localStorage 缓存 / 默认值，返回无会话。
+   */
+  async function initPrefs(): Promise<{ hasSession: boolean; activePath: string }> {
+    let prefs: Record<string, unknown> = {};
+    try {
+      prefs = await getPrefs();
+      prefsBackendOk.value = true;
+    } catch {
+      prefsBackendOk.value = false;
+    }
+    if (Object.keys(prefs).length) {
+      // 后端值覆盖 localStorage 缓存 / 默认值（缺字段保留当前值，做字段级兼容）。
+      const pick = <T,>(key: PrefKey, cur: T): T =>
+        (key in prefs && prefs[key] !== undefined && prefs[key] !== null ? prefs[key] as T : cur);
+      indentMode.value = pick(PREF_KEYS.indentMode, indentMode.value);
+      indentWidth.value = pick(PREF_KEYS.indentWidth, indentWidth.value);
+      fontSize.value = pick(PREF_KEYS.fontSize, fontSize.value);
+      lineWrapping.value = pick(PREF_KEYS.lineWrapping, lineWrapping.value);
+      showLineNumbers.value = pick(PREF_KEYS.showLineNumbers, showLineNumbers.value);
+      showSpaces.value = pick(PREF_KEYS.showSpaces, showSpaces.value);
+      showTabs.value = pick(PREF_KEYS.showTabs, showTabs.value);
+      showLineBreaks.value = pick(PREF_KEYS.showLineBreaks, showLineBreaks.value);
+      lastSaveDir.value = pick(PREF_KEYS.lastSaveDir, lastSaveDir.value);
+      // 回写一份到 localStorage，作为后端不可用时的兜底。
+      for (const [k, v] of Object.entries(prefsSnapshot())) lsSet(k, v);
+    }
+
+    // 恢复会话：后端 session → localStorage 缓存 → 无。
+    const sess = (prefs[SESSION_KEY] ?? lsGet(SESSION_KEY, null)) as
+      | { [SESSION_TABS]?: string[]; [SESSION_ACTIVE]?: string }
+      | null;
+    const paths = Array.isArray(sess?.[SESSION_TABS]) ? sess![SESSION_TABS]! : [];
+    if (!paths.length) return { hasSession: false, activePath: '' };
+
+    restoreGuard = true;
+    let want = sess?.[SESSION_ACTIVE] ?? '';
+    try {
+      for (const p of paths) {
+        // 逐个 await：openFile 内部 push 占位再异步填内容，串行保证顺序与 activeId 稳定。
+        await openFile(p);
+      }
+      const target = tabs.value.find(tb => tb.path === want)
+        ?? tabs.value[tabs.value.length - 1];
+      if (target) activeId.value = target.id;
+      else want = '';
+    } finally {
+      restoreGuard = false;
+    }
+    return { hasSession: true, activePath: want || paths[paths.length - 1] };
+  }
+
   return {
     tabs, activeId, activeTab, activePath, error, status,
     saveAsVisible, lastSaveDir,
@@ -390,6 +557,7 @@ export const useEditorStore = defineStore('editor', () => {
     openFile, saveActive, closeTab, markDirty, newUntitled, setError,
     doSaveAs, closeSaveAs,
     reloadFile, tabById,
+    initPrefs, persistSession, prefsBackendOk,
   };
 });
 

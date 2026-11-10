@@ -25,6 +25,7 @@ import (
 	"omniedit/server/internal/api"
 	"omniedit/server/internal/files"
 	"omniedit/server/internal/openapi"
+	"omniedit/server/internal/prefs"
 	"omniedit/server/internal/watcher"
 )
 
@@ -37,6 +38,7 @@ func main() {
 		devAllowAll = flag.Bool("dev-allow-all", false, "开发调试：放行无网关身份的请求（生产禁止开启）")
 		httpAddr    = flag.String("http", "", "开发调试：额外监听的 HTTP 地址（如 127.0.0.1:8899），便于浏览器直连（生产留空）")
 		devRoot     = flag.String("dev-root", "", "开发调试：临时授权的根目录（配合 --dev-allow-all），使文件服务可访问该目录（生产禁止开启）")
+		confDir     = flag.String("conf-dir", os.Getenv("TRIM_PKGETC"), "偏好配置目录（生产由 TRIM_PKGETC 注入；开发调试可覆盖，如 ./data）")
 	)
 	flag.Parse()
 
@@ -67,11 +69,24 @@ func main() {
 		}
 	}
 
+	// 用户偏好存储：落盘 ${TRIM_PKGETC}/prefs.<uid>.json（无 uid 回退 prefs.json）。
+	// 生产由 TRIM_PKGETC 注入；开发调试可用 --conf-dir 覆盖，缺省落到 ./data 便于本机联调。
+	prefsDir := *confDir
+	if prefsDir == "" {
+		prefsDir = "./data"
+	}
+	prefsSvc := prefs.New(prefsDir)
+	if err := os.MkdirAll(prefsDir, 0o755); err != nil {
+		log.Fatalf("创建偏好配置目录失败: %v", err)
+	}
+	log.Printf("[prefs] 配置目录: %s", prefsDir)
+
 	h := &api.Handler{
 		FileSvc:     fileSvc,
 		OpenAPI:     openClient,
 		Prefix:      gwPrefix,
 		DevAllowAll: *devAllowAll,
+		Prefs:       prefsSvc,
 	}
 
 	// 文件变更推送：轮询 watcher + WebSocket Hub。
@@ -146,6 +161,19 @@ func buildMux(prefix, staticDir string, h *api.Handler) http.Handler {
 	apiMux.HandleFunc("/api/file/read", h.ReadFile)
 	apiMux.HandleFunc("/api/file/write", h.WriteFile)
 	apiMux.HandleFunc("/api/file/unwatch", h.Unwatch)
+	apiMux.HandleFunc("/api/prefs", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			h.GetPrefs(w, r)
+		case http.MethodPut, http.MethodPost:
+			h.PutPrefs(w, r)
+		default:
+			w.Header().Set("Allow", "GET, PUT")
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			_, _ = w.Write([]byte(`{"ok":false,"error":"方法不允许"}`))
+		}
+	})
 	mux.Handle(prefix+"/api/", http.StripPrefix(prefix, apiMux))
 
 	// 静态资源 + SPA 回退：{prefix}/

@@ -360,9 +360,17 @@ onMounted(async () => {
   void initLang();
   // 启动文件变更推送监听（外部修改后自动刷新/提示）。
   startFileWatch();
+  // 拉取后端偏好（菜单设置/上次保存目录）并恢复上次会话的标签。
+  // 失败不阻塞：各项回落 localStorage 缓存/默认值。
+  const restored = await store.initPrefs();
   const p = pathFromLocation();
   if (p) {
+    // URL ?path= 优先（文件管理器右键打开）：直接打开该文件，会话其余标签仍在。
     await store.openFile(p);
+  } else if (restored.hasSession) {
+    // 无 path 且有会话 → 已恢复标签，定位到上次活动标签即可（initPrefs 已设）。
+    // 若会话标签全部打开失败（文件被删等），兜底新建草稿，避免空白无标签。
+    if (!store.tabs.length) store.newUntitled();
   } else {
     // 记事本形态：桌面图标打开 = 空白的「无标题」编辑窗口。
     store.newUntitled();

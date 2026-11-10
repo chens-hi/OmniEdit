@@ -68,6 +68,11 @@ start() {
   fi
 
   mkdir -p "$TRIM_PKGVAR" 2>/dev/null || true
+  # 确保偏好配置目录存在（生产由 fnOS 注入 TRIM_PKGETC = /vol{n}/@appconf/{appname}）。
+  # 缺失时后端也会自行 MkdirAll，这里提前建好便于排障（如权限问题早暴露）。
+  if [ -n "${TRIM_PKGETC:-}" ]; then
+    mkdir -p "$TRIM_PKGETC" 2>/dev/null || true
+  fi
   # 清理可能残留的 socket 文件
   rm -f "$APP_SOCK" 2>/dev/null || true
 

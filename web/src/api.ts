@@ -88,6 +88,27 @@ export function health(): Promise<{ ok: boolean }> {
 }
 
 /**
+ * 读取当前用户偏好（菜单设置 / 上次保存目录 / 会话标签）。
+ * 返回原始 JSON 对象；缺失时后端返回 {}（前端据默认值初始化）。
+ * 失败抛 ApiError，由调用方降级到 localStorage/默认值。
+ */
+export async function getPrefs(): Promise<Record<string, unknown>> {
+  const data = await request<Record<string, unknown>>(`${BASE}/api/prefs`);
+  return data ?? {};
+}
+
+/**
+ * 保存当前用户偏好（整体覆盖写回）。body 即偏好 JSON 对象。
+ * fire-and-forget 调用即可；失败由调用方决定是否提示。
+ */
+export function putPrefs(prefs: Record<string, unknown>): Promise<{ ok: boolean }> {
+  return request(`${BASE}/api/prefs`, {
+    method: 'PUT',
+    body: JSON.stringify(prefs),
+  });
+}
+
+/**
  * 从 URL 查询参数中提取 fnOS 传入的文件路径。
  * 用户通过文件管理器右键「OmniEdit」打开文件时，
  * fnOS 会在入口 URL 后追加 ?path=/vol1/.../example.txt。
