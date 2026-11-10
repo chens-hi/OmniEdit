@@ -138,7 +138,11 @@ export function createWhitespaceOverlay(
       const marks = cfg.showSpaces || cfg.showTabs || cfg.showLineBreaks
         ? detectMarks(getView(), cfg)
         : [];
-      // 页面坐标 → 编辑器坐标系（覆盖层与 cm-editor 同原点，直接减去编辑器偏移）
+      // 页面坐标 → 覆盖层坐标：x/y 都要减去编辑器的视口偏移
+      // （coordsAtPos 返回相对浏览器视口的坐标；editorRect 是编辑器在
+      // 视口中的位置；覆盖层 inset:0 铺满编辑器，故相减即可对齐）。
+      // 滚动时 coordsAtPos 的视觉坐标随滚动变化，重画即自动对齐——
+      // 不再叠加 transform 平移（v0.4.9 的双重偏移根因）。
       const editorRect = getView().dom.getBoundingClientRect();
       const html = marks
         .map((m) => {
@@ -149,22 +153,14 @@ export function createWhitespaceOverlay(
               : m.type === 'break'
                 ? 'ws-mark ws-brk'
                 : 'ws-mark';
-          return `<span class="${cls}" style="left:${m.x - editorRect.left}px;top:${m.y}px">${ch}</span>`;
+          return `<span class="${cls}" style="left:${m.x - editorRect.left}px;top:${m.y - editorRect.top}px">${ch}</span>`;
         })
         .join('');
       overlay.innerHTML = html;
-      // 跟随滚动：覆盖层固定，内容滚动时整体平移
-      syncScroll();
     } catch (err) {
       console.warn('[whitespace] draw 异常:', err);
       overlay.innerHTML = '';
     }
-  }
-
-  function syncScroll() {
-    if (destroyed) return;
-    const { scrollLeft, scrollTop } = getView().scrollDOM;
-    overlay.style.transform = `translate(${-scrollLeft}px, ${-scrollTop}px)`;
   }
 
   function scheduleDetect() {
@@ -174,10 +170,9 @@ export function createWhitespaceOverlay(
     }, 180);
   }
 
-  // 滚动跟随：rAF 同步平移（不重检测），滚动停止后节流重画
+  // 滚动跟随：节流重画（视觉坐标随滚动变化，重画即自动对齐；
+  // v0.4.9 的 transform 平移方案与视觉坐标双重叠加导致错位，已废弃）
   const onScroll = () => {
-    cancelAnimationFrame(rafId);
-    rafId = requestAnimationFrame(syncScroll);
     scheduleDetect();
   };
   getView().scrollDOM.addEventListener('scroll', onScroll, { passive: true });
