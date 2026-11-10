@@ -9,16 +9,17 @@ import {
 import { RangeSetBuilder } from '@codemirror/state';
 
 /**
- * 空白符号可见化（Notepad++「显示符号」风格）——**CodeMirror 原生 Decoration**。
+ * 空白符号可见化（Notepad++「显示符号」风格）。
  *
- * 只做三类符号：空格 ·、制表符 →、行尾 ↩。全部由 CM 自己管理视口/滚动/
- * 重排，不引入外部覆盖层，因此不存在坐标换算、滚动残影、节流重画等问题。
+ * 三类符号：空格 ·、制表符 →（居中箭头）、行尾 ↩。
  *
- * 关键实现决策（v0.4.2 真机验证）：
- *   - 空格/Tab 用 **Decoration.mark**（保字符、只加样式类）——绝不用 replace，
- *     替换会把 · / → 的字宽强加给原字符位置，破坏等宽字体列对齐；
- *   - 行尾 ↩ 用 **Decoration.widget** 挂在 line.to（零宽叠加，不占布局宽度）；
- *   - mark/widget 都是 CM 视口级装饰，滚动/折行时 CM 自动重算，天然稳定。
+ * 实现策略：
+ *   - 空格 → mark（背景圆点，不影响布局）
+ *   - Tab  → replace + Widget：把 tab 字符从 DOM 整个替换成固定像素宽的箭头 widget。
+ *     关键：用 mark 套 span 会改变浏览器对 tab 字符的 tab-stop 计算，导致「显示/不显示
+ *     制表符宽度不一致」；replace 后宽度由我们按 tab-stop 显式计算，显示与否完全一致，
+ *     且竖直位置全控（可精确居中于相邻文字）。
+ *   - 行尾 ↩ → widget side:1（零宽叠加）
  */
 
 export interface WhitespaceConfig {
@@ -27,7 +28,7 @@ export interface WhitespaceConfig {
   showLineBreaks: boolean;
 }
 
-/** 行尾 ↩（真实回车；widget 零宽叠加在行末，不参与布局） */
+/** 行尾 ↩ */
 class LineBreakWidget extends WidgetType {
   eq() {
     return true;
@@ -44,49 +45,96 @@ class LineBreakWidget extends WidgetType {
   }
 }
 
+/**
+ * 制表符 → widget：固定像素宽（= 该 tab 的 tab-stop 宽度），内部绝对定位画
+ * 居中横杆 + 右端箭头尖。宽度显式 → 显示/不显示制表符布局完全一致。
+ */
+class TabWidget extends WidgetType {
+  constructor(readonly widthPx: number) {
+    super();
+  }
+  eq(other: TabWidget) {
+    return other.widthPx === this.widthPx;
+  }
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = 'cm-ws-tab';
+    span.style.width = `${this.widthPx}px`;
+    // 横杆（居中）+ 箭头尖（贴右、与横杆垂直对齐）
+    const shaft = document.createElement('span');
+    shaft.className = 'cm-ws-tab-shaft';
+    const head = document.createElement('span');
+    head.className = 'cm-ws-tab-head';
+    span.appendChild(shaft);
+    span.appendChild(head);
+    span.setAttribute('aria-hidden', 'true');
+    return span;
+  }
+  estimatedWidth() {
+    return this.widthPx;
+  }
+  ignoreEvent() {
+    return true;
+  }
+}
+
 const lineBreakDeco = Decoration.widget({ widget: new LineBreakWidget(), side: 1 });
 const spaceDeco = Decoration.mark({ class: 'cm-ws-space' });
-const tabDeco = Decoration.mark({ class: 'cm-ws-tab' });
 
-/** 构建视口内装饰（每次 update 重建，CM 视口级，成本极低）。 */
 function buildDecorations(view: EditorView, cfg: WhitespaceConfig): DecorationSet {
   if (!cfg.showSpaces && !cfg.showTabs && !cfg.showLineBreaks) {
     return Decoration.none;
   }
 
-  const doc = view.state.doc;
+  const { state } = view;
+  const tabSize = state.tabSize;
+  // 单空格渲染宽度。诊断实测：defaultCharacterWidth == 单空格宽（== 16空格探针 ==
+  // canvas measureText），浏览器原生 tab 宽 = slots × 该值。直接用它，宽度与原生一致，
+  // 且不受首次 buildDecorations 时布局/字体未就绪的影响（自测探针在那一刻会量错）。
+  const spaceW = cfg.showTabs ? view.defaultCharacterWidth : 0;
+  const doc = state.doc;
   const { from, to } = view.viewport;
   const pending: { from: number; to: number; deco: Decoration }[] = [];
 
   for (let pos = from; pos <= to; ) {
     const line = doc.lineAt(pos);
+    const text = line.text;
 
     if (cfg.showSpaces || cfg.showTabs) {
-      const text = line.text;
+      let col = 0;
       for (let i = 0; i < text.length; i++) {
         const ch = text[i];
-        if (ch === ' ' && cfg.showSpaces) {
-          pending.push({ from: line.from + i, to: line.from + i + 1, deco: spaceDeco });
-        } else if (ch === '\t' && cfg.showTabs) {
-          pending.push({ from: line.from + i, to: line.from + i + 1, deco: tabDeco });
+        if (ch === '\t' && cfg.showTabs) {
+          const slots = tabSize - (col % tabSize);
+          // 用实测单空格宽 × slots，与浏览器原生 tab 宽度口径一致（保留小数）
+          const widthPx = Math.max(spaceW * slots, 1);
+          pending.push({
+            from: line.from + i,
+            to: line.from + i + 1,
+            deco: Decoration.replace({ widget: new TabWidget(widthPx), inclusive: false }),
+          });
+          col += slots;
+        } else {
+          if (ch === ' ' && cfg.showSpaces) {
+            pending.push({ from: line.from + i, to: line.from + i + 1, deco: spaceDeco });
+          }
+          col += 1;
         }
       }
     }
-    // 行尾 ↩（文档最后一行无换行符，跳过）
+
     if (cfg.showLineBreaks && line.to < doc.length) {
       pending.push({ from: line.to, to: line.to, deco: lineBreakDeco });
     }
     pos = line.to + 1;
   }
 
-  // RangeSetBuilder 要求位置严格递增；按行扫描天然有序，但为稳妥排序
   pending.sort((a, b) => a.from - b.from || a.to - b.to);
   const builder = new RangeSetBuilder<Decoration>();
   for (const d of pending) builder.add(d.from, d.to, d.deco);
   return builder.finish();
 }
 
-/** 创建空白符号扩展（插件 + 主题）。 */
 export function whitespaceExtensions(getCfg: () => WhitespaceConfig) {
   const plugin = ViewPlugin.fromClass(
     class {
@@ -95,8 +143,6 @@ export function whitespaceExtensions(getCfg: () => WhitespaceConfig) {
         this.decorations = buildDecorations(view, getCfg());
       }
       update(u: ViewUpdate) {
-        // 无条件重建：视口/文档/折行变化时 CM 都会派发 update，
-        // 视口内逐字符扫描成本极低，无需条件判断（避免漏帧）。
         this.decorations = buildDecorations(u.view, getCfg());
       }
     },
@@ -105,26 +151,53 @@ export function whitespaceExtensions(getCfg: () => WhitespaceConfig) {
   return [plugin, whitespaceTheme];
 }
 
-/**
- * 符号样式（baseTheme 全局注入，scoped 样式够不到 CM 内部 DOM）。
- * 颜色走 styles.css 的主题变量（--ws-*），明暗主题自动切换。
- */
 export const whitespaceTheme = EditorView.baseTheme({
-  // 空格：底色小圆点（mark 保字符，宽度不变）
+  // 空格：底色小圆点
   '.cm-ws-space': {
     backgroundImage: 'radial-gradient(circle, var(--ws-dot-color) 1px, transparent 1.2px)',
     backgroundSize: '100% 100%',
     backgroundPosition: 'center',
     backgroundRepeat: 'no-repeat',
   },
-  // 制表符：底部短线（宽度 = tab 渲染宽度，天然对齐）
+  // Tab widget：固定像素宽（内联 style），高 1em，底边贴 baseline（无 in-flow 内容，
+  // inline-block 基线=下边距边）。内部绝对定位画居中横杆 + 右端箭头尖 →。
+  // cursor:text：widget 内部只有空 div（无文字节点），cursor:auto 会退回默认箭头，
+  // 显式设 text 才与编辑器其它区域的 I-beam 光标一致。
   '.cm-ws-tab': {
-    backgroundImage: 'linear-gradient(to right, var(--ws-line-color) 0 60%, transparent 60%)',
-    backgroundSize: '100% 1px',
-    backgroundPosition: 'left bottom',
-    backgroundRepeat: 'no-repeat',
+    display: 'inline-block',
+    position: 'relative',
+    height: '1em',
+    verticalAlign: 'baseline',
+    cursor: 'text',
   },
-  // 行尾 ↩：零宽 inline 叠加，pointer-events 关闭
+  // 居中横杆：left:0 → right:0.5em（右侧留给箭头尖）。竖直位置 = 文字视觉中心。
+  // 文字视觉中心约在 baseline 上方 0.4em；盒顶=baseline 上方 1em → 距盒顶 0.6em。
+  '.cm-ws-tab-shaft': {
+    position: 'absolute',
+    left: '0',
+    right: '0.5em',
+    top: '0.6em',
+    height: '1px',
+    backgroundColor: 'var(--ws-line-color)',
+    pointerEvents: 'none',
+  },
+  // 居中箭头尖：贴右端，竖直中心与横杆对齐（横杆在 0.6em，箭头高 0.85em → top 0.175em）。
+  '.cm-ws-tab-head': {
+    position: 'absolute',
+    right: '0',
+    top: '0.175em',
+    width: '0.5em',
+    height: '0.85em',
+    backgroundColor: 'var(--ws-line-color)',
+    WebkitMaskImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 12'%3E%3Cpath d='M1.5 1 L6.5 6 L1.5 11' fill='none' stroke='white' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")",
+    maskImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 12'%3E%3Cpath d='M1.5 1 L6.5 6 L1.5 11' fill='none' stroke='white' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")",
+    WebkitMaskRepeat: 'no-repeat',
+    maskRepeat: 'no-repeat',
+    WebkitMaskSize: '100% 100%',
+    maskSize: '100% 100%',
+    pointerEvents: 'none',
+  },
+  // 行尾 ↩：零宽叠加
   '.cm-ls-mark': {
     color: 'var(--ws-mark-color)',
     pointerEvents: 'none',

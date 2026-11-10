@@ -5,7 +5,8 @@ import { EditorState, Annotation, Compartment, Prec } from '@codemirror/state';
 import type { Extension } from '@codemirror/state';
 import { indentUnit } from '@codemirror/language';
 import { keymap, lineNumbers } from '@codemirror/view';
-import { indentWithTab } from '@codemirror/commands';
+import { indentMore, indentLess } from '@codemirror/commands';
+import type { Command } from '@codemirror/view';
 // tabSize 是 EditorState 静态 facet
 const tabSizeFacet = EditorState.tabSize;
 import { search } from '@codemirror/search';
@@ -29,7 +30,7 @@ const showPreview = ref(false);
 const showAbout = ref(false);
 const showShortcuts = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.3.0';
+const appVersion = '0.5.17';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -281,27 +282,43 @@ function onMenuFind(mode: 'find' | 'replace') {
 }
 
 /**
- * 应用级快捷键统一由 CM keymap 管理（Prec.highest 优先于 defaultKeymap /
- * searchKeymap），根治此前 @keydown（冒泡阶段）抢不过 CM 目标阶段 keymap
- * 导致编辑器聚焦时 Ctrl+N/O 触发默认光标动作的问题。
+ * Tab / Shift+Tab 命令：
+ *   - 有选区 → 整行缩进 / 反缩进（indentMore / indentLess）
+ *   - 无选区 → 在光标处插入缩进单元（空格 = indentWidth 个空格；Tab 模式 = \t）
  *
- * 不绑定：
- *  - Mod-f：官方 searchKeymap 已管（打开查找面板）；
- *  - Ctrl+H：让给浏览器历史记录（Web 环境无替换快捷键惯例，替换走菜单
- *    「替换…」或查找面板自带的替换输入框）；
- *  - F3/Esc/Ctrl-Z/Y/注释等：basicSetup + searchKeymap 已内置。
+ * 这是 Notepad++ / VS Code / 记事本 的标准语义——indentWithTab 把 Tab 一律
+ * 当成整行缩进，跟用户预期不符，所以手写一个。
+ *
+ * 用 Command (EditorView → boolean) 而不是 StateCommand，跟 CM KeyBinding.run
+ * 类型对齐，避免 CM 内部适配层的边缘问题。
+ */
+const tabCommand: Command = (view) => {
+  const { state, dispatch } = view;
+  const hasSel = state.selection.ranges.some(r => !r.empty);
+  const mode = store.indentMode;
+  const width = store.indentWidth;
+  console.log('[TabCmd] hasSel=', hasSel, 'mode=', mode, 'width=', width, 'head=', state.selection.main.head);
+  if (hasSel) return indentMore(view);
+  const insert = mode === 'tabs' ? '\t' : ' '.repeat(width);
+  console.log('[TabCmd] inserting', JSON.stringify(insert));
+  dispatch(state.update(state.replaceSelection(insert), { scrollIntoView: true, userEvent: 'input' }));
+  return true;
+};
+
+const shiftTabCommand: Command = (view) => indentLess(view);
+
+/**
+ * 应用级快捷键：只保留常规编辑键（Prec.highest 优先于 defaultKeymap）。
+ *
+ * 保留：Mod-s 保存、Tab/Shift-Tab 缩进（自定义，遵循缩进设置）、
+ * Mod-f/F3/Esc（官方 searchKeymap）、Ctrl+Z/Y 等（basicSetup 内置）。
+ * 不绑定：Ctrl+N/O/W（浏览器原生语义：新窗口/打开/关页面，功能走菜单与
+ * 按钮）、Ctrl+H（让给浏览器历史）、Ctrl+Shift+S（另存为走菜单）。
  */
 const appKeymap = Prec.highest(
   keymap.of([
     { key: 'Mod-s', run: () => { onSave(); return true; } },
-    { key: 'Mod-n', run: () => { store.newUntitled(); return true; } },
-    { key: 'Mod-o', run: () => { void store.openViaPicker(); return true; } },
-    { key: 'Mod-w', run: () => {
-      const tab = store.activeTab;
-      if (tab) store.closeTab(tab.id);
-      return true;
-    } },
-    indentWithTab, // Tab 缩进 / Shift-Tab 反缩进，遵循 indentCompartment
+    { key: 'Tab', run: tabCommand, shift: shiftTabCommand },
   ]),
 );
 
@@ -444,10 +461,7 @@ onMounted(async () => {
       <div class="mmodal">
         <div class="mmodal-title">{{ t('menuShortcuts') }}</div>
         <div class="mmodal-body shortcuts">
-          <div><span>Ctrl+N</span>{{ t('menuNew') }}</div>
-          <div><span>Ctrl+O</span>{{ t('menuOpen') }}</div>
           <div><span>Ctrl+S</span>{{ t('menuSave') }}</div>
-          <div><span>Ctrl+W</span>{{ t('close') }}</div>
           <div><span>Ctrl+F</span>{{ t('menuFind') }}</div>
           <div><span>F3 / Shift+F3</span>{{ t('nextMatch') }} / {{ t('prevMatch') }}</div>
           <div><span>Tab / Shift+Tab</span>{{ t('menuIndent') }}</div>

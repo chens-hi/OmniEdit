@@ -91,8 +91,8 @@ const saveItem = computed<MenuItem | null>(() => {
 const menus = computed<Menu[]>((): Menu[] => {
   const tab = store.activeTab;
   const fileItems: MenuItem[] = [
-    { type: 'item', label: t('menuNew'), shortcut: 'Ctrl+N', action: () => { openMenu.value = null; store.newUntitled(); } },
-    { type: 'item', label: t('menuOpen'), shortcut: 'Ctrl+O', action: () => { openMenu.value = null; void store.openViaPicker(); } },
+    { type: 'item', label: t('menuNew'), action: () => { openMenu.value = null; store.newUntitled(); } },
+    { type: 'item', label: t('menuOpen'), action: () => { openMenu.value = null; void store.openViaPicker(); } },
     { type: 'sep' },
   ];
   if (saveItem.value) fileItems.push(saveItem.value);
