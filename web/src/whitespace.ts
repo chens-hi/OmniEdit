@@ -45,54 +45,20 @@ class LineBreakWidget extends WidgetType {
   }
 }
 
-/**
- * 制表符 → widget：固定像素宽（= 该 tab 的 tab-stop 宽度），内部绝对定位画
- * 居中横杆 + 右端箭头尖。宽度显式 → 显示/不显示制表符布局完全一致。
- */
-class TabWidget extends WidgetType {
-  constructor(readonly widthPx: number) {
-    super();
-  }
-  eq(other: TabWidget) {
-    return other.widthPx === this.widthPx;
-  }
-  toDOM() {
-    const span = document.createElement('span');
-    span.className = 'cm-ws-tab';
-    span.style.width = `${this.widthPx}px`;
-    // 横杆（居中）+ 箭头尖（贴右、与横杆垂直对齐）
-    const shaft = document.createElement('span');
-    shaft.className = 'cm-ws-tab-shaft';
-    const head = document.createElement('span');
-    head.className = 'cm-ws-tab-head';
-    span.appendChild(shaft);
-    span.appendChild(head);
-    span.setAttribute('aria-hidden', 'true');
-    return span;
-  }
-  estimatedWidth() {
-    return this.widthPx;
-  }
-  ignoreEvent() {
-    return true;
-  }
-}
-
 const lineBreakDeco = Decoration.widget({ widget: new LineBreakWidget(), side: 1 });
 const spaceDeco = Decoration.mark({ class: 'cm-ws-space' });
+// 制表符：用 mark 保留**真 tab 字符**，宽度由浏览器原生决定（含 CJK 混排也正确），
+// 箭头用 mask-image 背景画在 mark 上（随原生宽度自适应，零计算）。
+// 之前用 replace+Widget 需自算像素宽，而宽度在混排 CJK 行里算不准（中文占 ~2 列），
+// 导致显示/不显示制表符宽度不一致——回到 mark 从根上消除该问题。
+const tabDeco = Decoration.mark({ class: 'cm-ws-tab' });
 
 function buildDecorations(view: EditorView, cfg: WhitespaceConfig): DecorationSet {
   if (!cfg.showSpaces && !cfg.showTabs && !cfg.showLineBreaks) {
     return Decoration.none;
   }
 
-  const { state } = view;
-  const tabSize = state.tabSize;
-  // 单空格渲染宽度。诊断实测：defaultCharacterWidth == 单空格宽（== 16空格探针 ==
-  // canvas measureText），浏览器原生 tab 宽 = slots × 该值。直接用它，宽度与原生一致，
-  // 且不受首次 buildDecorations 时布局/字体未就绪的影响（自测探针在那一刻会量错）。
-  const spaceW = cfg.showTabs ? view.defaultCharacterWidth : 0;
-  const doc = state.doc;
+  const doc = view.state.doc;
   const { from, to } = view.viewport;
   const pending: { from: number; to: number; deco: Decoration }[] = [];
 
@@ -100,26 +66,12 @@ function buildDecorations(view: EditorView, cfg: WhitespaceConfig): DecorationSe
     const line = doc.lineAt(pos);
     const text = line.text;
 
-    if (cfg.showSpaces || cfg.showTabs) {
-      let col = 0;
-      for (let i = 0; i < text.length; i++) {
-        const ch = text[i];
-        if (ch === '\t' && cfg.showTabs) {
-          const slots = tabSize - (col % tabSize);
-          // 用实测单空格宽 × slots，与浏览器原生 tab 宽度口径一致（保留小数）
-          const widthPx = Math.max(spaceW * slots, 1);
-          pending.push({
-            from: line.from + i,
-            to: line.from + i + 1,
-            deco: Decoration.replace({ widget: new TabWidget(widthPx), inclusive: false }),
-          });
-          col += slots;
-        } else {
-          if (ch === ' ' && cfg.showSpaces) {
-            pending.push({ from: line.from + i, to: line.from + i + 1, deco: spaceDeco });
-          }
-          col += 1;
-        }
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === ' ' && cfg.showSpaces) {
+        pending.push({ from: line.from + i, to: line.from + i + 1, deco: spaceDeco });
+      } else if (ch === '\t' && cfg.showTabs) {
+        pending.push({ from: line.from + i, to: line.from + i + 1, deco: tabDeco });
       }
     }
 
@@ -159,43 +111,14 @@ export const whitespaceTheme = EditorView.baseTheme({
     backgroundPosition: 'center',
     backgroundRepeat: 'no-repeat',
   },
-  // Tab widget：固定像素宽（内联 style），高 1em，底边贴 baseline（无 in-flow 内容，
-  // inline-block 基线=下边距边）。内部绝对定位画居中横杆 + 右端箭头尖 →。
-  // cursor:text：widget 内部只有空 div（无文字节点），cursor:auto 会退回默认箭头，
-  // 显式设 text 才与编辑器其它区域的 I-beam 光标一致。
+  // 制表符：mark 保留真 tab 字符（宽度由浏览器原生决定，CJK 混排也正确），只用
+  // 背景渐变在垂直居中处画一条 1px 横线。inline 元素背景可渲染（同空格圆点机制），
+  // 不改布局 → 显示/不显示制表符宽度一致，点击/光标由真 tab 字符原生处理。
   '.cm-ws-tab': {
-    display: 'inline-block',
-    position: 'relative',
-    height: '1em',
-    verticalAlign: 'baseline',
-    cursor: 'text',
-  },
-  // 居中横杆：left:0 → right:0.5em（右侧留给箭头尖）。竖直位置 = 文字视觉中心。
-  // 文字视觉中心约在 baseline 上方 0.4em；盒顶=baseline 上方 1em → 距盒顶 0.6em。
-  '.cm-ws-tab-shaft': {
-    position: 'absolute',
-    left: '0',
-    right: '0.5em',
-    top: '0.6em',
-    height: '1px',
-    backgroundColor: 'var(--ws-line-color)',
-    pointerEvents: 'none',
-  },
-  // 居中箭头尖：贴右端，竖直中心与横杆对齐（横杆在 0.6em，箭头高 0.85em → top 0.175em）。
-  '.cm-ws-tab-head': {
-    position: 'absolute',
-    right: '0',
-    top: '0.175em',
-    width: '0.5em',
-    height: '0.85em',
-    backgroundColor: 'var(--ws-line-color)',
-    WebkitMaskImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 12'%3E%3Cpath d='M1.5 1 L6.5 6 L1.5 11' fill='none' stroke='white' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")",
-    maskImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 12'%3E%3Cpath d='M1.5 1 L6.5 6 L1.5 11' fill='none' stroke='white' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\")",
-    WebkitMaskRepeat: 'no-repeat',
-    maskRepeat: 'no-repeat',
-    WebkitMaskSize: '100% 100%',
-    maskSize: '100% 100%',
-    pointerEvents: 'none',
+    backgroundImage: 'linear-gradient(var(--ws-line-color), var(--ws-line-color))',
+    backgroundSize: '100% 1px',
+    backgroundPosition: 'center',
+    backgroundRepeat: 'no-repeat',
   },
   // 行尾 ↩：零宽叠加
   '.cm-ls-mark': {

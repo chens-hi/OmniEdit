@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.5.17
+version=0.5.19
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.5.17: 修复鼠标悬停制表符时光标变箭头（显式 cursor:text，与空格/换行一致）
+changelog=0.5.19: 制表符符号简化为原生宽度居中横线（mark 保真字符，修复 CJK 混排时切换显示宽度跳变，点击定位原生正确）
