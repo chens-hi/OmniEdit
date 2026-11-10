@@ -43,7 +43,7 @@ const showPreview = ref(false);
 const showAbout = ref(false);
 const showShortcuts = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.31';
+const appVersion = '0.5.32';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -297,7 +297,11 @@ function onSave() {
   if (!tab) return;
   // 只读预览（超大文件截断）禁止保存，避免覆盖原始大文件。
   if (tab.readonly) return;
-  // 把编辑器当前内容同步回 store 再保存。
+  // 已落盘文件：与菜单「保存」的禁用语义一致（!dirty 不动作）。
+  // 否则无改动时 Ctrl+S 也会 markDirty→写盘，表现为黄点闪一下 + 无谓更新 mtime
+  // （同文件在别处打开会误报外部修改）。草稿（无路径）不受此限：Ctrl+S 直接打开另存为。
+  if (tab.path && !tab.dirty) return;
+  // 把编辑器当前内容同步回 store 再保存（updateListener 已实时同步，此处兜底）。
   if (view && tab.id === mountedId) {
     store.markDirty(tab.id, view.state.doc.toString());
     // markDirty 改的是同一响应式对象，无需等待。

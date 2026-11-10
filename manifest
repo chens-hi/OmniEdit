@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.5.31
+version=0.5.32
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.5.31: 字体配置字段名 fontStyle 改为 fontFamily（与 CSS 调用接口统一），内部变量同步改名，读取兼容旧键
+changelog=0.5.32: Ctrl+S 与菜单「保存」语义统一——无未保存改动时不动作（修复黄点闪现与无谓写盘）；草稿仍直接打开另存为
