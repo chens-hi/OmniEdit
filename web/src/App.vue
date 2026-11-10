@@ -116,6 +116,13 @@ function mountEditor(tab: { id: number; content: string; path: string; name: str
     if (u.docChanged && mountedId && !u.transactions.some(tr => tr.annotation(docSync))) {
       store.markDirty(mountedId, u.state.doc.toString());
     }
+    // 空白符号覆盖层：文档/视口/几何变化时重画（含初次挂载后 viewport
+    // 从空窗到实际内容的更新）。折行重排可能在 geometryChanged 后仍有
+    // 微调，二次重画（300ms）兜底。
+    if (u.docChanged || u.viewportChanged || u.geometryChanged) {
+      wsOverlay?.refresh();
+      window.setTimeout(() => wsOverlay?.refresh(), 300);
+    }
   });
   view = new EditorView({
     parent: host,
@@ -136,13 +143,17 @@ function mountEditor(tab: { id: number; content: string; path: string; name: str
   });
   // debug 钩子：排障/自动化测试用（必须在 new EditorView 之后赋值）
   (window as unknown as { __omnieditView?: EditorView | null }).__omnieditView = view;
-  // 空白符号覆盖层（编辑器销毁时同步销毁）
-  wsOverlay?.destroy();
-  wsOverlay = createWhitespaceOverlay(
-    document.getElementById('editor-host') ?? host,
-    view,
-    wsCfg,
-  );
+  // 空白符号覆盖层：动态取 view（mountEditor 重建 view 后无需重建覆盖层）
+  const getView = () => (window as unknown as { __omnieditView?: EditorView | null }).__omnieditView as EditorView;
+  if (!wsOverlay) {
+    wsOverlay = createWhitespaceOverlay(
+      document.getElementById('editor-host') ?? host,
+      getView,
+      wsCfg,
+    );
+  } else {
+    wsOverlay.refresh();
+  }
   syncCursor(view.state);
 }
 

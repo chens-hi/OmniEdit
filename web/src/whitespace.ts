@@ -119,7 +119,7 @@ export interface WhitespaceOverlay {
 /** 创建覆盖层并启动同步。返回销毁函数与刷新函数。 */
 export function createWhitespaceOverlay(
   host: HTMLElement,
-  view: EditorView,
+  getView: () => EditorView,
   getCfg: () => WhitespaceConfig,
 ): WhitespaceOverlay {
   const overlay = document.createElement('div');
@@ -134,31 +134,36 @@ export function createWhitespaceOverlay(
   function draw() {
     if (destroyed) return;
     const cfg = getCfg();
-    const marks = cfg.showSpaces || cfg.showTabs || cfg.showLineBreaks
-      ? detectMarks(view, cfg)
-      : [];
-    // 页面坐标 → 编辑器坐标系（覆盖层与 cm-editor 同原点，直接减去编辑器偏移）
-    const editorRect = view.dom.getBoundingClientRect();
-    const html = marks
-      .map((m) => {
-        const ch = m.type === 'space' ? '·' : m.type === 'tab' ? '→' : m.type === 'break' ? '↵' : '↩';
-        const cls =
-          m.type === 'soft'
-            ? 'ws-mark ws-soft'
-            : m.type === 'break'
-              ? 'ws-mark ws-brk'
-              : 'ws-mark';
-        return `<span class="${cls}" style="left:${m.x - editorRect.left}px;top:${m.y}px">${ch}</span>`;
-      })
-      .join('');
-    overlay.innerHTML = html;
-    // 跟随滚动：覆盖层固定，内容滚动时整体平移
-    syncScroll();
+    try {
+      const marks = cfg.showSpaces || cfg.showTabs || cfg.showLineBreaks
+        ? detectMarks(getView(), cfg)
+        : [];
+      // 页面坐标 → 编辑器坐标系（覆盖层与 cm-editor 同原点，直接减去编辑器偏移）
+      const editorRect = getView().dom.getBoundingClientRect();
+      const html = marks
+        .map((m) => {
+          const ch = m.type === 'space' ? '·' : m.type === 'tab' ? '→' : m.type === 'break' ? '↵' : '↩';
+          const cls =
+            m.type === 'soft'
+              ? 'ws-mark ws-soft'
+              : m.type === 'break'
+                ? 'ws-mark ws-brk'
+                : 'ws-mark';
+          return `<span class="${cls}" style="left:${m.x - editorRect.left}px;top:${m.y}px">${ch}</span>`;
+        })
+        .join('');
+      overlay.innerHTML = html;
+      // 跟随滚动：覆盖层固定，内容滚动时整体平移
+      syncScroll();
+    } catch (err) {
+      console.warn('[whitespace] draw 异常:', err);
+      overlay.innerHTML = '';
+    }
   }
 
   function syncScroll() {
     if (destroyed) return;
-    const { scrollLeft, scrollTop } = view.scrollDOM;
+    const { scrollLeft, scrollTop } = getView().scrollDOM;
     overlay.style.transform = `translate(${-scrollLeft}px, ${-scrollTop}px)`;
   }
 
@@ -175,7 +180,7 @@ export function createWhitespaceOverlay(
     rafId = requestAnimationFrame(syncScroll);
     scheduleDetect();
   };
-  view.scrollDOM.addEventListener('scroll', onScroll, { passive: true });
+  getView().scrollDOM.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('resize', scheduleDetect);
 
   // 初始绘制
@@ -186,7 +191,7 @@ export function createWhitespaceOverlay(
       destroyed = true;
       cancelAnimationFrame(rafId);
       window.clearTimeout(detectTimer);
-      view.scrollDOM.removeEventListener('scroll', onScroll);
+      getView().scrollDOM.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', scheduleDetect);
       overlay.remove();
     },

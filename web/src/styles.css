@@ -352,3 +352,20 @@ body,
   padding: 4px 0; border-bottom: 1px dashed var(--border);
 }
 .mmodal-body.shortcuts span { color: var(--accent); font-family: Consolas, monospace; }
+/* ---------- 空白符号覆盖层（独立于 CM 文本流，不参与折行排版） ---------- */
+.ws-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: var(--ws-overlay-z, 5);
+  overflow: hidden;
+}
+.ws-mark {
+  position: absolute;
+  transform: translate(2px, -1px);
+  font-size: 0.85em;
+  color: var(--ws-mark-color);
+  pointer-events: none;
+  white-space: pre;
+}
+.ws-mark.ws-soft { color: var(--ws-soft-color); }
