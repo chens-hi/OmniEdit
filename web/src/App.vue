@@ -198,12 +198,6 @@ watch(
   },
 );
 
-// 保存按钮的 dirty 判定：无标题草稿即使未输入也允许另存为（保存空文件是合法预期）。
-const canSave = () => {
-  const tab = store.activeTab;
-  return !!tab && !tab.loading && !tab.readonly;
-};
-
 // ---- 状态栏信息（全部从活动标签派生，纯展示） ----
 
 /** 文档字节数：Blob 按字符串 UTF-8 编码，与后端读到的字节数一致（GBK 等由
@@ -379,23 +373,12 @@ onMounted(async () => {
 <template>
   <div class="app">
     <MenuBar
+      :preview-open="showPreview"
       @find="onMenuFind"
+      @toggle-preview="showPreview = !showPreview"
       @about="showAbout = true"
       @shortcuts="showShortcuts = true"
     />
-    <header class="toolbar">
-      <span class="status-text">{{ store.status }}</span>
-      <div class="spacer" />
-      <button
-        v-if="store.activeTab?.isMarkdown"
-        class="btn ghost"
-        @click="showPreview = !showPreview"
-        :title="t('preview')"
-      >{{ t('preview') }}</button>
-      <button class="btn" :disabled="!canSave()" @click="onSave">
-        {{ store.activeTab?.path ? t('saveShortcut') : t('menuSaveAs') }}
-      </button>
-    </header>
 
     <div class="body">
       <div class="main">

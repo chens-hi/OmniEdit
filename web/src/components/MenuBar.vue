@@ -13,10 +13,16 @@ import { t, lang } from '../i18n';
 
 const store = useEditorStore();
 
+const props = defineProps<{
+  /** Markdown 预览当前是否展开（驱动「视图 ▸ 预览」勾选态）。 */
+  previewOpen: boolean;
+}>();
+
 const emit = defineEmits<{
   (e: 'find', mode: 'find' | 'replace'): void;
   (e: 'about'): void;
   (e: 'shortcuts'): void;
+  (e: 'togglePreview'): void;
 }>();
 
 /** 菜单项定义 */
@@ -155,6 +161,7 @@ const menus = computed<Menu[]>((): Menu[] => {
             },
           ],
         },
+        { type: 'checkbox', label: t('preview'), checked: () => props.previewOpen, disabled: () => !store.activeTab?.isMarkdown, action: () => { openMenu.value = null; emit('togglePreview'); } },
         { type: 'checkbox', label: t('menuWordWrap'), checked: () => store.lineWrapping, action: () => store.setLineWrapping(!store.lineWrapping) },
         { type: 'sep' },
         {
