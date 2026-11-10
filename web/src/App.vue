@@ -16,7 +16,7 @@ import { initTheme, theme } from './theme';
 import { initLang, t, lang } from './i18n';
 import { startFileWatch } from './fileWatch';
 import { createSearchPanel, openSearch } from './searchPanel';
-import { createWhitespaceOverlay, type WhitespaceOverlay } from './whitespace';
+import { whitespaceExtensions } from './whitespace';
 import MenuBar from './components/MenuBar.vue';
 import TabBar from './components/TabBar.vue';
 import MarkdownPreview from './components/MarkdownPreview.vue';
@@ -41,8 +41,8 @@ const indentCompartment = new Compartment();
 const fontCompartment = new Compartment();
 const wrapCompartment = new Compartment();
 const lineNoCompartment = new Compartment();
-// 空白符号覆盖层（显示 ▸ 菜单驱动；挂载于 mountEditor 后，独立于 CM 文本流）
-let wsOverlay: WhitespaceOverlay | null = null;
+// 空白符号装饰（显示 ▸ 菜单驱动；CM 原生 Decoration，视口级自动管理）
+const whitespaceCompartment = new Compartment();
 
 function wsCfg() {
   return {
@@ -50,6 +50,10 @@ function wsCfg() {
     showTabs: store.showTabs,
     showLineBreaks: store.showLineBreaks,
   };
+}
+
+function buildWhitespaceExts(): Extension[] {
+  return whitespaceExtensions(wsCfg);
 }
 
 /** 缩进扩展组合：空格模式 = indentUnit 指定空格 + tabSize 渲染宽度；Tab 模式 = 制表符。 */
@@ -116,10 +120,6 @@ function mountEditor(tab: { id: number; content: string; path: string; name: str
     if (u.docChanged && mountedId && !u.transactions.some(tr => tr.annotation(docSync))) {
       store.markDirty(mountedId, u.state.doc.toString());
     }
-    // 空白符号覆盖层：文档/视口/几何变化时重画（视口内坐标可能变化）。
-    if (u.docChanged || u.viewportChanged || u.geometryChanged) {
-      wsOverlay?.refresh();
-    }
   });
   view = new EditorView({
     parent: host,
@@ -134,23 +134,13 @@ function mountEditor(tab: { id: number; content: string; path: string; name: str
       fontCompartment.of(buildFontExts()),
       wrapCompartment.of(buildWrapExts()),
       lineNoCompartment.of(buildLineNoExts()),
+      whitespaceCompartment.of(buildWhitespaceExts()),
       updateListener,
     ],
     doc: tab.content,
   });
   // debug 钩子：排障/自动化测试用（必须在 new EditorView 之后赋值）
   (window as unknown as { __omnieditView?: EditorView | null }).__omnieditView = view;
-  // 空白符号覆盖层：动态取 view（mountEditor 重建 view 后无需重建覆盖层）
-  const getView = () => (window as unknown as { __omnieditView?: EditorView | null }).__omnieditView as EditorView;
-  if (!wsOverlay) {
-    wsOverlay = createWhitespaceOverlay(
-      document.getElementById('editor-host') ?? host,
-      getView,
-      wsCfg,
-    );
-  } else {
-    wsOverlay.refresh();
-  }
   syncCursor(view.state);
 }
 
@@ -347,7 +337,7 @@ watch(() => store.showLineNumbers, () => {
   view?.dispatch({ effects: lineNoCompartment.reconfigure(buildLineNoExts()) });
 });
 watch(() => [store.showSpaces, store.showTabs, store.showLineBreaks], () => {
-  wsOverlay?.refresh();
+  view?.dispatch({ effects: whitespaceCompartment.reconfigure(buildWhitespaceExts()) });
 });
 
 onMounted(async () => {

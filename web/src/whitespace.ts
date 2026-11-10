@@ -1,15 +1,24 @@
-import type { EditorView } from '@codemirror/view';
+import {
+  ViewPlugin,
+  Decoration,
+  type DecorationSet,
+  type ViewUpdate,
+  WidgetType,
+  EditorView,
+} from '@codemirror/view';
+import { RangeSetBuilder } from '@codemirror/state';
 
 /**
- * 空白符号可见化（Notepad++「显示符号」风格）——**独立覆盖层实现**。
+ * 空白符号可见化（Notepad++「显示符号」风格）——**CodeMirror 原生 Decoration**。
  *
- * 符号画在独立覆盖层（absolute 铺满编辑区、pointer-events:none），不进
- * CM 文本流，折行排版完全不受影响。仅三类符号：空格 ·、制表符 →、行尾 ↩。
+ * 只做三类符号：空格 ·、制表符 →、行尾 ↩。全部由 CM 自己管理视口/滚动/
+ * 重排，不引入外部覆盖层，因此不存在坐标换算、滚动残影、节流重画等问题。
  *
- * v0.5.2 决策：砍掉软折行标记（↩ 与 ↵ 双符号区分）。CM6 基于 DOM 排版，
- * 无可靠的视觉行边界 API，coordsAtPos 采样在行尾空格紧贴折点时存在盲区，
- * 迭代 6 版仍无法彻底稳定且引入大量时序兜底代码，性价比过低。
- * 用户需求反向满足：有行尾 ↩ = 文件真实回车；折下来的行没有 ↩ = 自动折行。
+ * 关键实现决策（v0.4.2 真机验证）：
+ *   - 空格/Tab 用 **Decoration.mark**（保字符、只加样式类）——绝不用 replace，
+ *     替换会把 · / → 的字宽强加给原字符位置，破坏等宽字体列对齐；
+ *   - 行尾 ↩ 用 **Decoration.widget** 挂在 line.to（零宽叠加，不占布局宽度）；
+ *   - mark/widget 都是 CM 视口级装饰，滚动/折行时 CM 自动重算，天然稳定。
  */
 
 export interface WhitespaceConfig {
@@ -18,126 +27,111 @@ export interface WhitespaceConfig {
   showLineBreaks: boolean;
 }
 
-/** 一个待绘制符号：type 决定字符，x/y 为页面坐标 */
-interface WsMark {
-  type: 'space' | 'tab' | 'break';
-  x: number;
-  y: number;
+/** 行尾 ↩（真实回车；widget 零宽叠加在行末，不参与布局） */
+class LineBreakWidget extends WidgetType {
+  eq() {
+    return true;
+  }
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = 'cm-ls-mark';
+    span.textContent = '↩';
+    span.setAttribute('aria-hidden', 'true');
+    return span;
+  }
+  ignoreEvent() {
+    return true;
+  }
 }
 
-/** 检测符号位置（页面坐标，基于 coordsAtPos 采样，视口内逐字符）。 */
-function detectMarks(view: EditorView, cfg: WhitespaceConfig): WsMark[] {
-  const marks: WsMark[] = [];
-  const doc = view.state.doc;
-  const sample = (pos: number): { top: number; left: number } | null => {
-    try {
-      const c = view.coordsAtPos(pos);
-      return c ? { top: c.top, left: c.left } : null;
-    } catch {
-      return null;
-    }
-  };
+const lineBreakDeco = Decoration.widget({ widget: new LineBreakWidget(), side: 1 });
+const spaceDeco = Decoration.mark({ class: 'cm-ws-space' });
+const tabDeco = Decoration.mark({ class: 'cm-ws-tab' });
 
-  for (let pos = view.viewport.from; pos <= view.viewport.to; ) {
+/** 构建视口内装饰（每次 update 重建，CM 视口级，成本极低）。 */
+function buildDecorations(view: EditorView, cfg: WhitespaceConfig): DecorationSet {
+  if (!cfg.showSpaces && !cfg.showTabs && !cfg.showLineBreaks) {
+    return Decoration.none;
+  }
+
+  const doc = view.state.doc;
+  const { from, to } = view.viewport;
+  const pending: { from: number; to: number; deco: Decoration }[] = [];
+
+  for (let pos = from; pos <= to; ) {
     const line = doc.lineAt(pos);
 
-    // 行尾真实换行 ↩（文档最后一行无换行符，跳过）
-    if (cfg.showLineBreaks && line.to < doc.length) {
-      const c = sample(line.to);
-      if (c) marks.push({ type: 'break', x: c.left, y: c.top });
-    }
-
-    // 空格 · 与制表符 →
     if (cfg.showSpaces || cfg.showTabs) {
       const text = line.text;
       for (let i = 0; i < text.length; i++) {
         const ch = text[i];
         if (ch === ' ' && cfg.showSpaces) {
-          const c = sample(line.from + i);
-          if (c) marks.push({ type: 'space', x: c.left, y: c.top });
+          pending.push({ from: line.from + i, to: line.from + i + 1, deco: spaceDeco });
         } else if (ch === '\t' && cfg.showTabs) {
-          const c = sample(line.from + i);
-          if (c) marks.push({ type: 'tab', x: c.left, y: c.top });
+          pending.push({ from: line.from + i, to: line.from + i + 1, deco: tabDeco });
         }
       }
     }
-
+    // 行尾 ↩（文档最后一行无换行符，跳过）
+    if (cfg.showLineBreaks && line.to < doc.length) {
+      pending.push({ from: line.to, to: line.to, deco: lineBreakDeco });
+    }
     pos = line.to + 1;
   }
-  return marks;
+
+  // RangeSetBuilder 要求位置严格递增；按行扫描天然有序，但为稳妥排序
+  pending.sort((a, b) => a.from - b.from || a.to - b.to);
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const d of pending) builder.add(d.from, d.to, d.deco);
+  return builder.finish();
 }
 
-/** 覆盖层句柄：销毁与手动刷新（配置变化时由 App.vue 调用）。 */
-export interface WhitespaceOverlay {
-  destroy(): void;
-  refresh(): void;
-}
-
-/** 创建覆盖层并启动同步。 */
-export function createWhitespaceOverlay(
-  host: HTMLElement,
-  getView: () => EditorView,
-  getCfg: () => WhitespaceConfig,
-): WhitespaceOverlay {
-  const overlay = document.createElement('div');
-  overlay.className = 'ws-overlay';
-  host.style.position = 'relative';
-  host.appendChild(overlay);
-
-  let rafId = 0;
-  let detectTimer: number | undefined;
-  let destroyed = false;
-
-  function draw() {
-    if (destroyed) return;
-    const cfg = getCfg();
-    try {
-      const marks = cfg.showSpaces || cfg.showTabs || cfg.showLineBreaks
-        ? detectMarks(getView(), cfg)
-        : [];
-      // 页面坐标 → 覆盖层坐标：x/y 都减去编辑器视口偏移。
-      // x 钳制：行尾/长单词可能超出可视宽度，钳到右缘内侧 14px 保证可见。
-      const editorRect = getView().dom.getBoundingClientRect();
-      const maxX = editorRect.width - 14;
-      const html = marks
-        .map((m) => {
-          const ch = m.type === 'space' ? '·' : m.type === 'tab' ? '→' : '↩';
-          const cls = m.type === 'break' ? 'ws-mark ws-brk' : 'ws-mark';
-          const x = Math.min(m.x - editorRect.left, maxX);
-          return `<span class="${cls}" style="left:${x}px;top:${m.y - editorRect.top}px">${ch}</span>`;
-        })
-        .join('');
-      overlay.innerHTML = html;
-    } catch (err) {
-      console.warn('[whitespace] draw 异常:', err);
-      overlay.innerHTML = '';
-    }
-  }
-
-  function scheduleDetect() {
-    window.clearTimeout(detectTimer);
-    detectTimer = window.setTimeout(() => {
-      rafId = requestAnimationFrame(draw);
-    }, 180);
-  }
-
-  // 滚动/尺寸变化：节流重画（视觉坐标随滚动变化，重画即对齐）
-  const onScroll = () => scheduleDetect();
-  getView().scrollDOM.addEventListener('scroll', onScroll, { passive: true });
-  window.addEventListener('resize', scheduleDetect);
-  rafId = requestAnimationFrame(draw);
-
-  return {
-    destroy() {
-      destroyed = true;
-      cancelAnimationFrame(rafId);
-      window.clearTimeout(detectTimer);
-      getView().scrollDOM.removeEventListener('scroll', onScroll);
-      window.removeEventListener('resize', scheduleDetect);
-      overlay.remove();
+/** 创建空白符号扩展（插件 + 主题）。 */
+export function whitespaceExtensions(getCfg: () => WhitespaceConfig) {
+  const plugin = ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+      constructor(view: EditorView) {
+        this.decorations = buildDecorations(view, getCfg());
+      }
+      update(u: ViewUpdate) {
+        // 无条件重建：视口/文档/折行变化时 CM 都会派发 update，
+        // 视口内逐字符扫描成本极低，无需条件判断（避免漏帧）。
+        this.decorations = buildDecorations(u.view, getCfg());
+      }
     },
-    refresh() {
-      rafId = requestAnimationFrame(draw);
-    },
-  };
+    { decorations: (v) => v.decorations },
+  );
+  return [plugin, whitespaceTheme];
 }
+
+/**
+ * 符号样式（baseTheme 全局注入，scoped 样式够不到 CM 内部 DOM）。
+ * 颜色走 styles.css 的主题变量（--ws-*），明暗主题自动切换。
+ */
+export const whitespaceTheme = EditorView.baseTheme({
+  // 空格：底色小圆点（mark 保字符，宽度不变）
+  '.cm-ws-space': {
+    backgroundImage: 'radial-gradient(circle, var(--ws-dot-color) 1px, transparent 1.2px)',
+    backgroundSize: '100% 100%',
+    backgroundPosition: 'center',
+    backgroundRepeat: 'no-repeat',
+  },
+  // 制表符：底部短线（宽度 = tab 渲染宽度，天然对齐）
+  '.cm-ws-tab': {
+    backgroundImage: 'linear-gradient(to right, var(--ws-line-color) 0 60%, transparent 60%)',
+    backgroundSize: '100% 1px',
+    backgroundPosition: 'left bottom',
+    backgroundRepeat: 'no-repeat',
+  },
+  // 行尾 ↩：零宽 inline 叠加，pointer-events 关闭
+  '.cm-ls-mark': {
+    color: 'var(--ws-mark-color)',
+    pointerEvents: 'none',
+    display: 'inline-block',
+    width: '0',
+    overflow: 'visible',
+    whiteSpace: 'nowrap',
+    fontSize: '0.9em',
+  },
+});
