@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.5.19
+version=0.5.22
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.5.19: 制表符符号简化为原生宽度居中横线（mark 保真字符，修复 CJK 混排时切换显示宽度跳变，点击定位原生正确）
+changelog=0.5.22: 帮助菜单新增「还原初始状态」（二次确认后清空全部设置与会话标签）

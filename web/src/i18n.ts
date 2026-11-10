@@ -85,6 +85,12 @@ const dict = {
   menuFontSizeItem: { zh: '字号', en: 'Font Size' },
   menuShortcuts: { zh: '快捷键速查', en: 'Keyboard Shortcuts' },
   menuAbout: { zh: '关于 OmniEdit', en: 'About OmniEdit' },
+  menuReset: { zh: '还原初始状态', en: 'Reset to Defaults' },
+  resetConfirm: {
+    zh: '将清除全部设置并关闭所有标签，恢复到初始状态。此操作不可撤销，确定继续？',
+    en: 'This clears all settings and closes every tab, restoring the initial state. This cannot be undone. Continue?',
+  },
+  resetDone: { zh: '已还原到初始状态', en: 'Reset to defaults' },
   undoRedo: { zh: '撤销 / 重做', en: 'Undo / Redo' },
   promptOpenPath: { zh: '输入要打开的文件路径（本地开发模式）：', en: 'Enter file path to open (local dev mode):' },
 

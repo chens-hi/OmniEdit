@@ -71,6 +71,13 @@ function doExit() {
   }
 }
 
+/** 还原初始状态：二次确认后清空设置/标签并写回后端（破坏性，不可撤销）。 */
+function doReset() {
+  openMenu.value = null;
+  if (!window.confirm(t('resetConfirm'))) return;
+  void store.resetToDefaults();
+}
+
 /** 显示子菜单父项右侧的当前值摘要（有任一符号开启即显示"符号: 开"）。 */
 function displayValueText(): string {
   if (store.showSpaces || store.showTabs || store.showLineBreaks) return t('showOn');
@@ -201,6 +208,8 @@ const menus = computed<Menu[]>((): Menu[] => {
       items: [
         { type: 'item', label: t('menuShortcuts'), action: () => { openMenu.value = null; emit('shortcuts'); } },
         { type: 'item', label: t('menuAbout'), action: () => { openMenu.value = null; emit('about'); } },
+        { type: 'sep' },
+        { type: 'item', label: t('menuReset'), action: doReset },
       ],
     },
   ] as Menu[];
