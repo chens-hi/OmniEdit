@@ -9,7 +9,6 @@
   --ws-dot-color: rgba(255, 255, 255, 0.28);
   --ws-line-color: rgba(255, 255, 255, 0.25);
   --ws-mark-color: rgba(255, 255, 255, 0.38);
-  --ws-soft-color: rgba(100, 150, 255, 0.55);
   /* 空白符号覆盖层 */
   --ws-overlay-z: 5;
 }
@@ -26,7 +25,6 @@ html[data-theme="light"] {
   --ws-dot-color: rgba(60, 60, 60, 0.30);
   --ws-line-color: rgba(60, 60, 60, 0.28);
   --ws-mark-color: rgba(60, 60, 60, 0.40);
-  --ws-soft-color: rgba(60, 110, 220, 0.50);
 }
 
 * {
@@ -368,4 +366,3 @@ body,
   pointer-events: none;
   white-space: pre;
 }
-.ws-mark.ws-soft { color: var(--ws-soft-color); }

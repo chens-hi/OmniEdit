@@ -3,15 +3,13 @@ import type { EditorView } from '@codemirror/view';
 /**
  * 空白符号可见化（Notepad++「显示符号」风格）——**独立覆盖层实现**。
  *
- * 关键决策（v0.4.8）：符号**不进文本流**。此前用 Decoration（widget/mark）
- * 挂在文本内部，即使 CSS 零宽/absolute，元素插入文本流后浏览器折行排版仍
- * 被带偏（实测：折行右侧空白塌陷、词被挤下行）。Notepad++/VS Code 的符号
- * 是渲染层叠加——我们也这样做：
+ * 符号画在独立覆盖层（absolute 铺满编辑区、pointer-events:none），不进
+ * CM 文本流，折行排版完全不受影响。仅三类符号：空格 ·、制表符 →、行尾 ↩。
  *
- *   - 符号画在**独立覆盖层 div**（absolute 铺满编辑区，pointer-events:none，
- *     与 cm-editor 同级而非其内部），浏览器折行排版完全不受影响；
- *   - 坐标来自 view.coordsAtPos（实测可靠的采样法），换算到编辑器坐标系；
- *   - rAF 同步滚动偏移；滚动停止 180ms 后重新检测（节流）。
+ * v0.5.2 决策：砍掉软折行标记（↩ 与 ↵ 双符号区分）。CM6 基于 DOM 排版，
+ * 无可靠的视觉行边界 API，coordsAtPos 采样在行尾空格紧贴折点时存在盲区，
+ * 迭代 6 版仍无法彻底稳定且引入大量时序兜底代码，性价比过低。
+ * 用户需求反向满足：有行尾 ↩ = 文件真实回车；折下来的行没有 ↩ = 自动折行。
  */
 
 export interface WhitespaceConfig {
@@ -20,18 +18,17 @@ export interface WhitespaceConfig {
   showLineBreaks: boolean;
 }
 
-/** 一个待绘制符号：type 决定字符，x/y 为编辑器坐标系像素位置 */
+/** 一个待绘制符号：type 决定字符，x/y 为页面坐标 */
 interface WsMark {
-  type: 'space' | 'tab' | 'break' | 'soft';
+  type: 'space' | 'tab' | 'break';
   x: number;
   y: number;
 }
 
-/** 检测符号位置（页面坐标，基于 coordsAtPos 采样）。 */
+/** 检测符号位置（页面坐标，基于 coordsAtPos 采样，视口内逐字符）。 */
 function detectMarks(view: EditorView, cfg: WhitespaceConfig): WsMark[] {
   const marks: WsMark[] = [];
   const doc = view.state.doc;
-  const lineHeight = view.defaultLineHeight || 20;
   const sample = (pos: number): { top: number; left: number } | null => {
     try {
       const c = view.coordsAtPos(pos);
@@ -44,7 +41,7 @@ function detectMarks(view: EditorView, cfg: WhitespaceConfig): WsMark[] {
   for (let pos = view.viewport.from; pos <= view.viewport.to; ) {
     const line = doc.lineAt(pos);
 
-    // 行尾真实换行 ↵（文档最后一行无换行符，跳过）
+    // 行尾真实换行 ↩（文档最后一行无换行符，跳过）
     if (cfg.showLineBreaks && line.to < doc.length) {
       const c = sample(line.to);
       if (c) marks.push({ type: 'break', x: c.left, y: c.top });
@@ -65,46 +62,6 @@ function detectMarks(view: EditorView, cfg: WhitespaceConfig): WsMark[] {
       }
     }
 
-    // 软折行 ↩：coordsAtPos y 跳变采样（先 32 字符粗扫 + 二分细化）。
-    // 折行点的 x 即「该视觉行最后一个字符」的右边界——直接用采样坐标。
-    if (cfg.showLineBreaks) {
-      const topFirst = sample(line.from);
-      const topLast = sample(Math.max(line.from, line.to - 1));
-      if (
-        topFirst !== null &&
-        topLast !== null &&
-        Math.abs(topLast.top - topFirst.top) >= lineHeight / 2
-      ) {
-        const step = 32;
-        let lastY = topFirst.top;
-        let lastPos = line.from;
-        for (let p = line.from + step; p < line.to; p += step) {
-          const c = sample(p);
-          if (!c) continue;
-          if (Math.abs(c.top - lastY) >= lineHeight / 2) {
-            // 二分细化：找第一个跳到新视觉行的字符，↩ 画在其前一字符的行尾
-            let lo = lastPos + 1;
-            let hi = p;
-            let breakPos = p;
-            while (lo <= hi) {
-              const mid = (lo + hi) >> 1;
-              const mc = sample(mid);
-              if (mc === null || Math.abs(mc.top - lastY) >= lineHeight / 2) {
-                breakPos = mid;
-                hi = mid - 1;
-              } else {
-                lo = mid + 1;
-              }
-            }
-            const prevC = sample(Math.max(line.from, breakPos - 1));
-            if (prevC) marks.push({ type: 'soft', x: prevC.left, y: prevC.top });
-            lastY = c.top;
-          }
-          lastPos = p;
-        }
-      }
-    }
-
     pos = line.to + 1;
   }
   return marks;
@@ -116,7 +73,7 @@ export interface WhitespaceOverlay {
   refresh(): void;
 }
 
-/** 创建覆盖层并启动同步。返回销毁函数与刷新函数。 */
+/** 创建覆盖层并启动同步。 */
 export function createWhitespaceOverlay(
   host: HTMLElement,
   getView: () => EditorView,
@@ -138,22 +95,16 @@ export function createWhitespaceOverlay(
       const marks = cfg.showSpaces || cfg.showTabs || cfg.showLineBreaks
         ? detectMarks(getView(), cfg)
         : [];
-      // 页面坐标 → 覆盖层坐标：x/y 都要减去编辑器的视口偏移
-      // （coordsAtPos 返回相对浏览器视口的坐标；editorRect 是编辑器在
-      // 视口中的位置；覆盖层 inset:0 铺满编辑器，故相减即可对齐）。
-      // 滚动时 coordsAtPos 的视觉坐标随滚动变化，重画即自动对齐——
-      // 不再叠加 transform 平移（v0.4.9 的双重偏移根因）。
+      // 页面坐标 → 覆盖层坐标：x/y 都减去编辑器视口偏移。
+      // x 钳制：行尾/长单词可能超出可视宽度，钳到右缘内侧 14px 保证可见。
       const editorRect = getView().dom.getBoundingClientRect();
+      const maxX = editorRect.width - 14;
       const html = marks
         .map((m) => {
-          const ch = m.type === 'space' ? '·' : m.type === 'tab' ? '→' : m.type === 'break' ? '↵' : '↩';
-          const cls =
-            m.type === 'soft'
-              ? 'ws-mark ws-soft'
-              : m.type === 'break'
-                ? 'ws-mark ws-brk'
-                : 'ws-mark';
-          return `<span class="${cls}" style="left:${m.x - editorRect.left}px;top:${m.y - editorRect.top}px">${ch}</span>`;
+          const ch = m.type === 'space' ? '·' : m.type === 'tab' ? '→' : '↩';
+          const cls = m.type === 'break' ? 'ws-mark ws-brk' : 'ws-mark';
+          const x = Math.min(m.x - editorRect.left, maxX);
+          return `<span class="${cls}" style="left:${x}px;top:${m.y - editorRect.top}px">${ch}</span>`;
         })
         .join('');
       overlay.innerHTML = html;
@@ -170,15 +121,10 @@ export function createWhitespaceOverlay(
     }, 180);
   }
 
-  // 滚动跟随：节流重画（视觉坐标随滚动变化，重画即自动对齐；
-  // v0.4.9 的 transform 平移方案与视觉坐标双重叠加导致错位，已废弃）
-  const onScroll = () => {
-    scheduleDetect();
-  };
+  // 滚动/尺寸变化：节流重画（视觉坐标随滚动变化，重画即对齐）
+  const onScroll = () => scheduleDetect();
   getView().scrollDOM.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('resize', scheduleDetect);
-
-  // 初始绘制
   rafId = requestAnimationFrame(draw);
 
   return {

@@ -116,12 +116,9 @@ function mountEditor(tab: { id: number; content: string; path: string; name: str
     if (u.docChanged && mountedId && !u.transactions.some(tr => tr.annotation(docSync))) {
       store.markDirty(mountedId, u.state.doc.toString());
     }
-    // 空白符号覆盖层：文档/视口/几何变化时重画（含初次挂载后 viewport
-    // 从空窗到实际内容的更新）。折行重排可能在 geometryChanged 后仍有
-    // 微调，二次重画（300ms）兜底。
+    // 空白符号覆盖层：文档/视口/几何变化时重画（视口内坐标可能变化）。
     if (u.docChanged || u.viewportChanged || u.geometryChanged) {
       wsOverlay?.refresh();
-      window.setTimeout(() => wsOverlay?.refresh(), 300);
     }
   });
   view = new EditorView({
