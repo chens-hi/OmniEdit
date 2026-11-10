@@ -72,9 +72,9 @@ function doExit() {
 }
 
 /** 还原初始状态：二次确认后清空设置/标签并写回后端（破坏性，不可撤销）。 */
-function doReset() {
+async function doReset() {
   openMenu.value = null;
-  if (!window.confirm(t('resetConfirm'))) return;
+  if (!(await store.confirm(t('resetConfirm'), { danger: true }))) return;
   void store.resetToDefaults();
 }
 

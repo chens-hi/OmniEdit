@@ -55,6 +55,8 @@ const dict = {
   promptName: { zh: '输入文件名：', en: 'File name:' },
   requestingAuth: { zh: '正在请求访问授权…', en: 'Requesting file access…' },
   confirmCloseDirty: { zh: '有未保存的修改，确定关闭？', en: 'has unsaved changes. Close anyway?' },
+  confirmTitle: { zh: '确认', en: 'Confirm' },
+  confirmOk: { zh: '确定', en: 'OK' },
 
   // 菜单栏
   menuFile: { zh: '文件', en: 'File' },

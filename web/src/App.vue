@@ -34,6 +34,8 @@ import MenuBar from './components/MenuBar.vue';
 import TabBar from './components/TabBar.vue';
 import MarkdownPreview from './components/MarkdownPreview.vue';
 import SaveAsDialog from './components/SaveAsDialog.vue';
+import ConfirmDialog from './components/ConfirmDialog.vue';
+import AppModal from './components/AppModal.vue';
 
 const store = useEditorStore();
 const showPreview = ref(false);
@@ -41,7 +43,7 @@ const showPreview = ref(false);
 const showAbout = ref(false);
 const showShortcuts = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.25';
+const appVersion = '0.5.29';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -467,30 +469,36 @@ onMounted(async () => {
       @close="store.closeSaveAs()"
     />
 
-    <div v-if="showAbout" class="mmodal-mask" @click.self="showAbout = false">
-      <div class="mmodal">
-        <div class="mmodal-title">OmniEdit</div>
-        <div class="mmodal-body">
-          <div>{{ t('welcomeSub') }}</div>
-          <div class="dim">v{{ appVersion }}</div>
-        </div>
-        <button class="btn" @click="showAbout = false">{{ t('cancel') }}</button>
-      </div>
-    </div>
+    <!-- 全局确认对话框（替代 window.confirm，store.confirm 驱动） -->
+    <ConfirmDialog
+      v-if="store.confirmDialog.visible"
+      :message="store.confirmDialog.message"
+      :title="store.confirmDialog.title"
+      :confirm-text="store.confirmDialog.confirmText"
+      :danger="store.confirmDialog.danger"
+      @result="store.settleConfirm($event)"
+    />
 
-    <div v-if="showShortcuts" class="mmodal-mask" @click.self="showShortcuts = false">
-      <div class="mmodal">
-        <div class="mmodal-title">{{ t('menuShortcuts') }}</div>
-        <div class="mmodal-body shortcuts">
-          <div><span>Ctrl+S</span>{{ t('menuSave') }}</div>
-          <div><span>Ctrl+F</span>{{ t('menuFind') }}</div>
-          <div><span>F3 / Shift+F3</span>{{ t('nextMatch') }} / {{ t('prevMatch') }}</div>
-          <div><span>Tab / Shift+Tab</span>{{ t('menuIndent') }}</div>
-          <div><span>Ctrl+Z / Ctrl+Y</span>{{ t('undoRedo') }}</div>
-          <div><span>Esc</span>{{ t('closeSearch') }}</div>
-        </div>
-        <button class="btn" @click="showShortcuts = false">{{ t('cancel') }}</button>
+    <AppModal v-if="showAbout" :title="'OmniEdit'" :width="360" @close="showAbout = false">
+      <div>{{ t('welcomeSub') }}</div>
+      <div class="dim">v{{ appVersion }}</div>
+      <template #footer>
+        <button class="btn" @click="showAbout = false">{{ t('cancel') }}</button>
+      </template>
+    </AppModal>
+
+    <AppModal v-if="showShortcuts" :title="t('menuShortcuts')" :width="360" @close="showShortcuts = false">
+      <div class="shortcuts">
+        <div><span>Ctrl+S</span>{{ t('menuSave') }}</div>
+        <div><span>Ctrl+F</span>{{ t('menuFind') }}</div>
+        <div><span>F3 / Shift+F3</span>{{ t('nextMatch') }} / {{ t('prevMatch') }}</div>
+        <div><span>Tab / Shift+Tab</span>{{ t('menuIndent') }}</div>
+        <div><span>Ctrl+Z / Ctrl+Y</span>{{ t('undoRedo') }}</div>
+        <div><span>Esc</span>{{ t('closeSearch') }}</div>
       </div>
-    </div>
+      <template #footer>
+        <button class="btn" @click="showShortcuts = false">{{ t('cancel') }}</button>
+      </template>
+    </AppModal>
   </div>
 </template>

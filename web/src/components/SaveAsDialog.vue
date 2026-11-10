@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { sdk, readFile } from '../api';
 import { t } from '../i18n';
+import AppModal from './AppModal.vue';
 
 /**
  * 另存为模态对话框（替换 window.prompt）。
@@ -58,6 +59,11 @@ onMounted(() => {
     nameInput.value?.select(); // 选中主名（含 rangeEnd 默认到末尾，主名即全部）
   });
   void checkExists();
+  document.addEventListener('keydown', onKeydown);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onKeydown);
 });
 
 const fullExt = computed(() => (useCustomExt.value ? customExt.value : ext.value).trim());
@@ -175,107 +181,70 @@ function onKeydown(e: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="sad-mask" @keydown="onKeydown" @click.self="emit('close')">
-    <div class="sad-card" role="dialog" aria-modal="true">
-      <div class="sad-head">
-        <span class="sad-title">{{ titleText }}</span>
-        <button class="sad-x" :title="t('close')" @click="emit('close')">✕</button>
+  <AppModal :title="titleText" :width="480" @close="emit('close')">
+    <div class="sad-body">
+      <label class="sad-label">{{ t('saveLocation') }}</label>
+      <div class="sad-dir-row">
+        <input
+          class="sad-dir"
+          :value="dir"
+          :placeholder="t('saveLocation')"
+          readonly
+        />
+        <button class="sad-btn ghost" @click="chooseDir">{{ t('choose') }}</button>
       </div>
 
-      <div class="sad-body">
-        <label class="sad-label">{{ t('saveLocation') }}</label>
-        <div class="sad-dir-row">
-          <input
-            class="sad-dir"
-            :value="dir"
-            :placeholder="t('saveLocation')"
-            readonly
-          />
-          <button class="sad-btn ghost" @click="chooseDir">{{ t('choose') }}</button>
-        </div>
-
-        <label class="sad-label">{{ t('fileName') }}</label>
-        <div class="sad-name-row">
-          <input
-            ref="nameInput"
-            v-model="baseName"
-            class="sad-input sad-base"
-            :placeholder="t('fileName')"
-            spellcheck="false"
-            @input="checkExists"
-          />
-          <select
-            v-if="!useCustomExt"
-            v-model="ext"
-            class="sad-input sad-ext"
-            @change="checkExists"
-          >
-            <option v-for="e in EXT_OPTIONS" :key="e" :value="e">{{ e }}</option>
-            <option value="">自定义…</option>
-          </select>
-          <input
-            v-else
-            v-model="customExt"
-            class="sad-input sad-ext"
-            placeholder=".ext"
-            spellcheck="false"
-            @change="checkExists"
-          />
-        </div>
-
-        <div v-if="error" class="sad-error">{{ error }}</div>
-        <div v-else-if="existsHint" class="sad-hint">ⓘ {{ t('overwriteHint') }}</div>
-        <div class="sad-fullpath" :title="fullPath">{{ fullPath }}</div>
+      <label class="sad-label">{{ t('fileName') }}</label>
+      <div class="sad-name-row">
+        <input
+          ref="nameInput"
+          v-model="baseName"
+          class="sad-input sad-base"
+          :placeholder="t('fileName')"
+          spellcheck="false"
+          @input="checkExists"
+        />
+        <select
+          v-if="!useCustomExt"
+          v-model="ext"
+          class="sad-input sad-ext"
+          @change="checkExists"
+        >
+          <option v-for="e in EXT_OPTIONS" :key="e" :value="e">{{ e }}</option>
+          <option value="">自定义…</option>
+        </select>
+        <input
+          v-else
+          v-model="customExt"
+          class="sad-input sad-ext"
+          placeholder=".ext"
+          spellcheck="false"
+          @change="checkExists"
+        />
       </div>
 
-      <div class="sad-foot">
-        <button class="sad-btn ghost" @click="emit('close')">{{ t('cancel') }}</button>
-        <button class="sad-btn primary" :disabled="busy" @click="confirm">{{ t('saveBtn') }}</button>
-      </div>
+      <div v-if="error" class="sad-error">{{ error }}</div>
+      <div v-else-if="existsHint" class="sad-hint">ⓘ {{ t('overwriteHint') }}</div>
+      <div class="sad-fullpath" :title="fullPath">{{ fullPath }}</div>
     </div>
-  </div>
+
+    <template #footer>
+      <button class="sad-btn ghost" @click="emit('close')">{{ t('cancel') }}</button>
+      <button class="sad-btn primary" :disabled="busy" @click="confirm">{{ t('saveBtn') }}</button>
+    </template>
+  </AppModal>
 </template>
 
 <style scoped>
-.sad-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-.sad-card {
-  width: 480px;
-  max-width: calc(100vw - 40px);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  overflow: hidden;
-}
-.sad-head {
-  display: flex;
-  align-items: center;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
-}
-.sad-title { font-size: 14px; font-weight: 600; color: var(--fg); flex: 1; }
-.sad-x {
-  border: none; background: transparent; color: #888;
-  cursor: pointer; font-size: 14px; padding: 2px 6px; border-radius: 4px;
-}
-.sad-x:hover { color: var(--fg); background: rgba(255,255,255,0.08); }
-
-.sad-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
-.sad-label { font-size: 12px; color: #888; margin-top: 4px; }
+/* 卡片骨架（遮罩/标题栏/底部条/关闭按钮）由 AppModal 提供，这里只保留表单内容样式。 */
+.sad-body { display: flex; flex-direction: column; gap: 6px; }
+.sad-label { font-size: 12px; color: var(--fg-muted); margin-top: 4px; }
 
 .sad-dir-row, .sad-name-row { display: flex; gap: 6px; }
 .sad-dir {
   flex: 1; padding: 6px 8px;
   border: 1px solid var(--border); border-radius: 4px;
-  background: rgba(255,255,255,0.03); color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 3%, transparent); color: var(--fg);
   font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .sad-input {
@@ -287,20 +256,16 @@ function onKeydown(e: KeyboardEvent) {
 .sad-base { flex: 1; }
 .sad-ext { width: 90px; flex-shrink: 0; }
 
-.sad-error { font-size: 12px; color: var(--error, #e06c75); }
-.sad-hint { font-size: 12px; color: #e2c08d; }
+.sad-error { font-size: 12px; color: var(--error); }
+.sad-hint { font-size: 12px; color: color-mix(in srgb, var(--accent) 70%, var(--fg)); }
 .sad-fullpath {
-  font-size: 11px; color: #666; font-family: Consolas, monospace;
+  font-size: 11px; color: var(--fg-muted); font-family: var(--font-mono);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   margin-top: 2px;
 }
 
-.sad-foot {
-  display: flex; justify-content: flex-end; gap: 8px;
-  padding: 12px 16px; border-top: 1px solid var(--border);
-}
 .sad-btn {
-  padding: 6px 16px; border-radius: 4px; font-size: 12px; cursor: pointer;
+  padding: 6px 16px; border-radius: 6px; font-size: 12px; cursor: pointer;
   border: 1px solid var(--border); background: transparent; color: var(--fg);
 }
 .sad-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }

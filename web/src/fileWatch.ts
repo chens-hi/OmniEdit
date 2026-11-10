@@ -38,8 +38,11 @@ async function handleChange(path: string, mtime: string) {
     return;
   }
 
-  // 有未保存修改：让用户决定。
-  const reload = window.confirm(`${tab.name} ${t('externalChangePrompt')}`);
+  // 有未保存修改：让用户决定（统一确认框，替代 window.confirm）。
+  const reload = await store.confirm(`${tab.name} ${t('externalChangePrompt')}`, {
+    confirmText: t('fileChangedReload'),
+    cancelText: t('fileChangedKeep'),
+  });
   if (reload) {
     await store.reloadFile(path);
   }

@@ -3,6 +3,7 @@
 :root {
   --bg: #1e1e1e;
   --fg: #d4d4d4;
+  --fg-muted: #8b8b8b;   /* 弱化文字（次级标签、占位、关闭按钮）——暗色主题 */
   --toolbar-bg: #252526;
   --border: #333;
   --accent: #4a9eff;
@@ -18,6 +19,7 @@
 html[data-theme="light"] {
   --bg: #ffffff;
   --fg: #24292e;
+  --fg-muted: #6b7280;   /* 弱化文字——浅色主题 */
   --toolbar-bg: #f3f4f6;
   --border: #e1e4e8;
   --accent: #0969da;
@@ -325,32 +327,12 @@ html[data-theme="light"] .editor-host .cm-lineNumbers .cm-gutterElement {
   color: var(--error);
 }
 
-/* ---------- 菜单模态（关于/快捷键） ---------- */
-.mmodal-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 110;
-}
-.mmodal {
-  width: 360px;
-  max-width: calc(100vw - 40px);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  padding: 16px 20px;
-  text-align: center;
-}
-.mmodal-title { font-size: 15px; font-weight: 600; color: var(--fg); margin-bottom: 10px; }
-.mmodal-body { font-size: 12px; color: var(--fg); margin-bottom: 14px; }
-.mmodal-body .dim { color: #888; margin-top: 4px; }
-.mmodal-body.shortcuts { text-align: left; }
-.mmodal-body.shortcuts div {
+/* ---------- 模态内容（关于/快捷键，配合 AppModal 插槽） ---------- */
+.dim { color: var(--fg-muted); margin-top: 4px; font-size: 12px; }
+.shortcuts { text-align: left; }
+.shortcuts div {
   display: flex; justify-content: space-between;
-  padding: 4px 0; border-bottom: 1px dashed var(--border);
+  padding: 5px 0; border-bottom: 1px dashed var(--border);
+  font-size: 12px; color: var(--fg);
 }
-.mmodal-body.shortcuts span { color: var(--accent); font-family: Consolas, monospace; }
+.shortcuts span { color: var(--accent); font-family: Consolas, monospace; }

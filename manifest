@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.5.25
+version=0.5.29
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.5.25: 字体配置项字段名定为 fontStyle（存字体 id）
+changelog=0.5.29: 修复模态抖动结束后重播入场动画导致的渐出闪烁（入场改由 Vue Transition 接管，与抖动解耦）

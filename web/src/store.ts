@@ -303,7 +303,7 @@ export const useEditorStore = defineStore('editor', () => {
       if (file.tooLarge) {
         tabs.value = tabs.value.filter(x => x.id !== tab.id);
         if (activeId.value === tab.id) activeId.value = tabs.value[tabs.value.length - 1]?.id ?? 0;
-        const ok = window.confirm(
+        const ok = await confirm(
           `「${fileNameOf(path)}」${(file.size / 1024 / 1024).toFixed(1)} MB — ${t('largeFileConfirm')}`,
         );
         if (!ok) {
@@ -355,6 +355,47 @@ export const useEditorStore = defineStore('editor', () => {
   /** 上次保存目录（走 prefs 持久化，第二次另存免重选；跨浏览器共享）。 */
   const lastSaveDir = ref<string>(PREF_DEFAULTS.lastSaveDir);
 
+  // ---- 统一确认对话框（替代 window.confirm，Promise 化）----
+  const confirmDialog = ref<{
+    visible: boolean;
+    message: string;
+    title?: string;
+    confirmText?: string;
+    cancelText?: string;
+    danger?: boolean;
+  }>({ visible: false, message: '' });
+  let confirmResolver: ((ok: boolean) => void) | null = null;
+
+  /**
+   * confirm 弹出统一确认框，返回 Promise<boolean>（确定=true / 取消=false）。
+   * 用法：`if (!(await store.confirm('确定删除？'))) return;`
+   * 替代原生 window.confirm，外观与应用主题一致。
+   */
+  function confirm(
+    message: string,
+    opts: { title?: string; confirmText?: string; cancelText?: string; danger?: boolean } = {},
+  ): Promise<boolean> {
+    // 若已有未决的确认框，先以 false 结清（理论上单例不会并发，防御性处理）。
+    if (confirmResolver) { confirmResolver(false); confirmResolver = null; }
+    confirmDialog.value = {
+      visible: true,
+      message,
+      title: opts.title,
+      confirmText: opts.confirmText,
+      cancelText: opts.cancelText,
+      danger: opts.danger,
+    };
+    return new Promise<boolean>(resolve => { confirmResolver = resolve; });
+  }
+
+  /** ConfirmDialog 回调：结算 Promise 并关闭。 */
+  function settleConfirm(ok: boolean) {
+    confirmDialog.value.visible = false;
+    const resolve = confirmResolver;
+    confirmResolver = null;
+    resolve?.(ok);
+  }
+
   /** 保存当前活动标签：草稿/无路径 → 打开另存为对话框；否则直存。 */
   async function saveActive() {
     const tab = activeTab.value;
@@ -402,10 +443,10 @@ export const useEditorStore = defineStore('editor', () => {
     saveAsVisible.value = false;
   }
 
-  function closeTab(id: number) {
+  async function closeTab(id: number) {
     const tab = tabById(id);
     if (!tab) return;
-    if (tab.dirty && !window.confirm(`${tab.name} ${t('confirmCloseDirty')}`)) return;
+    if (tab.dirty && !(await confirm(`${tab.name} ${t('confirmCloseDirty')}`, { danger: true }))) return;
     const idx = tabs.value.findIndex(tb => tb.id === id);
     tabs.value.splice(idx, 1);
     if (activeId.value === id) {
@@ -587,6 +628,7 @@ export const useEditorStore = defineStore('editor', () => {
   return {
     tabs, activeId, activeTab, activePath, error, status,
     saveAsVisible, lastSaveDir,
+    confirmDialog, confirm, settleConfirm,
     indentMode, indentWidth, fontSize, fontStyle, lineWrapping, showLineNumbers,
     showSpaces, showTabs, showLineBreaks,
     setIndentMode, setFontSize, setFontStyle, setLineWrapping, setShowLineNumbers,
