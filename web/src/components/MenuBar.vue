@@ -82,17 +82,22 @@ async function doReset() {
 const menus = computed<Menu[]>((): Menu[] => {
   const tab = store.activeTab;
   const canSave = !!tab && !!tab.path && tab.dirty;
-  const canClose = !!tab;
   const fileItems: MenuItem[] = [
     { type: 'item', label: t('menuNew'), action: () => { openMenu.value = null; store.newUntitled(); } },
     { type: 'item', label: t('menuOpen'), action: () => { openMenu.value = null; void store.openViaPicker(); } },
-    { type: 'sep' },
-    { type: 'item', label: t('menuSave'), shortcut: 'Ctrl+S', disabled: () => !canSave, action: doSave },
-    { type: 'item', label: t('menuSaveAs'), action: doSaveAs },
-    { type: 'item', label: t('close'), disabled: () => !canClose, action: doClose },
-    { type: 'sep' },
-    { type: 'item', label: t('menuExit'), action: doExit },
   ];
+  // 无活动页签时：隐藏 保存/另存/关闭 整组（含其上方分割线），只留 新建/打开/退出。
+  // 分割线随分组一起条件渲染，避免出现孤立/多余的分割线。
+  if (tab) {
+    fileItems.push(
+      { type: 'sep' },
+      { type: 'item', label: t('menuSave'), shortcut: 'Ctrl+S', disabled: () => !canSave, action: doSave },
+      { type: 'item', label: t('menuSaveAs'), action: doSaveAs },
+      { type: 'item', label: t('close'), action: doClose },
+      { type: 'sep' },
+    );
+  }
+  fileItems.push({ type: 'item', label: t('menuExit'), action: doExit });
 
   const canSearch = !!tab && !tab.loading;
 

@@ -66,7 +66,7 @@ const dict = {
   menuNew: { zh: '新建', en: 'New' },
   menuOpen: { zh: '打开', en: 'Open' },
   menuSave: { zh: '保存', en: 'Save' },
-  menuSaveAs: { zh: '另存为…', en: 'Save As…' },
+  menuSaveAs: { zh: '另存', en: 'Save As' },
   menuExit: { zh: '退出', en: 'Exit' },
   menuFind: { zh: '查找…', en: 'Find…' },
   menuReplace: { zh: '替换…', en: 'Replace…' },
