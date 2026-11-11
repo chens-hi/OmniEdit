@@ -35,7 +35,7 @@ function settle(choice: 'save' | 'discard' | 'cancel') {
         </div>
         <ul class="bcm-list">
           <li v-for="f in bc.toSave" :key="f.id" class="bcm-row">
-            <span class="bcm-dot">●</span><span class="bcm-name">{{ f.name }}</span>
+            <span class="bcm-name">{{ f.name }}</span>
           </li>
         </ul>
       </div>
@@ -103,7 +103,6 @@ function settle(choice: 'save' | 'discard' | 'cancel') {
   border-bottom: 1px solid var(--border);
 }
 .bcm-row:last-child { border-bottom: none; }
-.bcm-dot { color: var(--warning); font-size: 10px; flex-shrink: 0; }
 .bcm-name {
   flex: 1;
   overflow: hidden;

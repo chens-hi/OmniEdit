@@ -132,7 +132,7 @@ const dict = {
   closeAllTabs: { zh: '所有', en: 'All' },
   // 批量关闭确认模态
   batchCloseTitle: { zh: '关闭页签', en: 'Close Tabs' },
-  batchCloseModified: { zh: '以下文件有未保存的修改：', en: 'These files have unsaved changes:' },
+  batchCloseModified: { zh: '以下文件未保存：', en: 'These files are unsaved:' },
   batchCloseDrafts: { zh: '以下草稿将丢弃：', en: 'These drafts will be discarded:' },
   batchCloseSaveAll: { zh: '保存并关闭', en: 'Save & Close' },
   batchCloseDiscard: { zh: '放弃并关闭', en: 'Discard & Close' },
