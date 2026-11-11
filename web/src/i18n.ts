@@ -124,12 +124,12 @@ const dict = {
   // 标签栏
   unsaved: { zh: '未保存', en: 'Unsaved' },
   close: { zh: '关闭', en: 'Close' },
-  // 页签右键「关闭」子菜单
-  closeCurrent: { zh: '当前页签', en: 'Current Tab' },
-  closeRight: { zh: '右侧页签', en: 'Tabs to the Right' },
-  closeLeft: { zh: '左侧页签', en: 'Tabs to the Left' },
-  closeOthers: { zh: '其他页签', en: 'Other Tabs' },
-  closeAllTabs: { zh: '所有页签', en: 'All Tabs' },
+  // 页签右键「关闭」子菜单（父项已是「关闭」，子项省略「页签」后缀）
+  closeCurrent: { zh: '当前', en: 'Current' },
+  closeRight: { zh: '右侧', en: 'To the Right' },
+  closeLeft: { zh: '左侧', en: 'To the Left' },
+  closeOthers: { zh: '其他', en: 'Others' },
+  closeAllTabs: { zh: '所有', en: 'All' },
   // 批量关闭确认模态
   batchCloseTitle: { zh: '关闭页签', en: 'Close Tabs' },
   batchCloseModified: { zh: '以下文件有未保存的修改：', en: 'These files have unsaved changes:' },
