@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.5.58
+version=0.5.59
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.5.58: 触摸拖动震动精简为仅触发拖动/交换完成时；修复桌面页签悬停误显抓手光标（握手光标仅拖动中显示）
+changelog=0.5.59: 窄屏抽屉优化——去掉带关闭按钮的标题行（点遮罩关闭），呼出时背景高斯模糊

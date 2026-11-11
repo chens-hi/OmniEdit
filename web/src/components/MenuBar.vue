@@ -381,10 +381,6 @@ void lang;
   <template v-if="isNarrow && drawerOpen">
     <div class="m-overlay" @click="closeDrawer" />
     <aside class="m-drawer" role="menu">
-      <div class="m-drawer-head">
-        <span class="m-drawer-title">{{ t('appName') }}</span>
-        <button class="m-drawer-close" aria-label="Close" @click="closeDrawer">✕</button>
-      </div>
       <div class="m-drawer-body">
         <div v-for="(menu, idx) in menus" :key="menu.label" class="m-group">
           <button class="m-group-head" @click="toggleGroup(idx)">
@@ -549,11 +545,13 @@ void lang;
   border-radius: 1px;
 }
 
-/* 覆盖层：遮住编辑区，点击关闭 */
+/* 覆盖层：遮住编辑区，点击关闭；背景高斯模糊突出抽屉层级 */
 .m-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px); /* Safari */
   z-index: 100;
   animation: mFadeIn 0.15s ease-out;
 }
@@ -576,33 +574,11 @@ void lang;
 }
 @keyframes mSlideIn { from { transform: translateX(-100%); } to { transform: translateX(0); } }
 
-.m-drawer-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 48px;
-  padding: 0 8px 0 16px;
-  border-bottom: 1px solid var(--border);
-  background: var(--toolbar-bg);
-  flex-shrink: 0;
-}
-.m-drawer-title { font-size: 14px; font-weight: 600; color: var(--fg); }
-.m-drawer-close {
-  width: 44px;
-  height: 44px;
-  border: none;
-  background: transparent;
-  color: var(--fg-muted);
-  font-size: 18px;
-  cursor: pointer;
-  border-radius: 6px;
-}
-.m-drawer-close:hover { background: rgba(255, 255, 255, 0.08); color: var(--fg); }
-
 .m-drawer-body {
   flex: 1;
   overflow-y: auto;
-  padding: 6px 0 24px;
+  /* 去掉了标题行：顶部留白 + 适配刘海/状态栏安全区 */
+  padding: calc(16px + env(safe-area-inset-top, 0px)) 0 24px;
 }
 
 /* 手风琴分组头 */
