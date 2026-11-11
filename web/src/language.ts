@@ -1,6 +1,9 @@
 import type { Extension } from '@codemirror/state';
 import { StreamLanguage } from '@codemirror/language';
 import { shell } from '@codemirror/legacy-modes/mode/shell';
+import { ruby } from '@codemirror/legacy-modes/mode/ruby';
+import { lua } from '@codemirror/legacy-modes/mode/lua';
+import { perl } from '@codemirror/legacy-modes/mode/perl';
 import { json } from '@codemirror/lang-json';
 import { markdown } from '@codemirror/lang-markdown';
 import { html } from '@codemirror/lang-html';
@@ -39,6 +42,9 @@ const LANG_SQL = sql();
 const LANG_YAML = yaml();
 // Shell 走 legacy stream-parser（CM6 无官方 lang-shell），用 StreamLanguage 包装。
 const LANG_SHELL = StreamLanguage.define(shell);
+const LANG_RUBY = StreamLanguage.define(ruby);
+const LANG_LUA = StreamLanguage.define(lua);
+const LANG_PERL = StreamLanguage.define(perl);
 
 /**
  * 根据文件扩展名返回对应的 CodeMirror 语言扩展（查表复用单例）。
@@ -106,6 +112,13 @@ export function languageExtensionFor(filename: string): Extension[] {
     case 'bash':
     case 'zsh':
       return [LANG_SHELL];
+    case 'rb':
+      return [LANG_RUBY];
+    case 'lua':
+      return [LANG_LUA];
+    case 'pl':
+    case 'pm':
+      return [LANG_PERL];
     default:
       // txt / log / conf / ini / env / toml / sh 等纯文本呈现。
       return [];
