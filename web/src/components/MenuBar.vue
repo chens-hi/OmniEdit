@@ -582,8 +582,8 @@ void lang;
   /* 隐藏滚动条（与 TabBar 一致；移动端抽屉靠手势滚动，不需要滚动条），
      避免内容较长时右侧出现滚动条被误认为色块 */
   scrollbar-width: none;
-  /* 去掉了标题行：顶部留白 + 适配刘海/状态栏安全区 */
-  padding: calc(16px + env(safe-area-inset-top, 0px)) 0 24px;
+  /* 菜单贴齐抽屉顶部（不额外留顶部空隙）；底部留白给最后一项呼吸 */
+  padding: 0 0 24px;
 }
 .m-drawer-body::-webkit-scrollbar { display: none; }
 
