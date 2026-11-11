@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.5.52
+version=0.5.53
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.5.52: 视图菜单新增「主题」（自动/浅色/深色，勾选式，默认自动跟随宿主系统），存入配置表
+changelog=0.5.53: 移动端/窄屏适配——窄屏抽屉菜单（汉堡触发、手风琴展开）、搜索浮窗与状态栏响应式、页签长按呼出上下文菜单（触摸设备）
