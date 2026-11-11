@@ -131,11 +131,11 @@ const dict = {
   closeOthers: { zh: '其他页签', en: 'Other Tabs' },
   closeAllTabs: { zh: '所有页签', en: 'All Tabs' },
   // 批量关闭确认模态
-  batchCloseTitle: { zh: '关闭多个标签', en: 'Close Multiple Tabs' },
+  batchCloseTitle: { zh: '关闭页签', en: 'Close Tabs' },
   batchCloseModified: { zh: '以下文件有未保存的修改：', en: 'These files have unsaved changes:' },
   batchCloseDrafts: { zh: '以下草稿将丢弃：', en: 'These drafts will be discarded:' },
-  batchCloseSaveAll: { zh: '保存全部并关闭', en: 'Save All & Close' },
-  batchCloseDiscard: { zh: '不保存关闭', en: 'Close Without Saving' },
+  batchCloseSaveAll: { zh: '保存并关闭', en: 'Save & Close' },
+  batchCloseDiscard: { zh: '放弃并关闭', en: 'Discard & Close' },
   tabLimitReached: {
     zh: '标签数已达上限（{n}），请先关闭部分标签',
     en: 'Tab limit reached ({n}); close some tabs first',
