@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.5.54
+version=0.5.55
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.5.54: 修复触摸端长按菜单"闪一下即关"（吞掉抬指补发的 mousedown）；触摸屏支持页签长按拖动排序（Pointer 手势，桌面键鼠拖拽不变）
+changelog=0.5.55: 页签拖动排序统一为 Pointer 手势——桌面与触摸共用同一套拖动机制（鼠标移动即拖，触摸长按后拖），移除 HTML5 DnD

@@ -52,49 +52,12 @@ const ctxItems = computed(() => {
   ];
 });
 
-// ---- 拖拽排序（HTML5 DnD：鼠标/触摸板可用，触摸屏不支持——fnOS 桌面场景足够）----
+// ---- 拖动排序：桌面与触摸共用一套 Pointer 手势（见下方「指针手势」块）----
+// 桌面旧实现是 HTML5 DnD，但触摸屏不触发 DnD 事件、得另写一套；现统一为 Pointer：
+// 鼠标移动即拖、触摸长按后移动才拖，拖动机制（指示线/落位/边缘横滚）完全一份。
 const draggingId = ref<number | null>(null);
-/** 放置指示：目标标签 + 插入侧（光标在目标左半=插其前，右半=插其后）。 */
+/** 放置指示：目标标签 + 插入侧（指针在目标左半=插其前，右半=插其后）。 */
 const dragOver = ref<{ id: number; side: 'before' | 'after' } | null>(null);
-
-function onDragStart(e: DragEvent, id: number) {
-  draggingId.value = id;
-  e.dataTransfer?.setData('text/plain', String(id)); // Firefox 需要数据才启动拖拽
-  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
-}
-
-function onDragOver(e: DragEvent, id: number) {
-  if (draggingId.value === null || draggingId.value === id) return;
-  e.preventDefault(); // 允许 drop
-  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-  dragOver.value = { id, side: e.clientX < rect.left + rect.width / 2 ? 'before' : 'after' };
-}
-
-function onDrop(e: DragEvent, id: number) {
-  e.preventDefault();
-  const over = dragOver.value;
-  if (draggingId.value !== null && over?.id === id) moveTab(draggingId.value, id, over.side);
-  clearDrag();
-}
-
-/** 拖到标签条空白处（末尾间隙）：放到最右。 */
-function onContainerDragOver(e: DragEvent) {
-  if (draggingId.value === null || e.target !== tabsEl.value) return;
-  e.preventDefault();
-  const last = store.tabs[store.tabs.length - 1];
-  if (last && last.id !== draggingId.value) dragOver.value = { id: last.id, side: 'after' };
-}
-function onContainerDrop(e: DragEvent) {
-  if (draggingId.value === null || e.target !== tabsEl.value) return;
-  e.preventDefault();
-  const last = store.tabs[store.tabs.length - 1];
-  if (last && last.id !== draggingId.value) moveTab(draggingId.value, last.id, 'after');
-  clearDrag();
-}
-
-function onDragEnd() { clearDrag(); }
-function clearDrag() { draggingId.value = null; dragOver.value = null; }
 
 /** 调整标签顺序（store.tabs 直接 splice，响应式）并持久化会话（顺序进 session.tabs）。 */
 function moveTab(fromId: number, toId: number, side: 'before' | 'after') {
@@ -110,25 +73,33 @@ function moveTab(fromId: number, toId: number, side: 'before' | 'after') {
   store.persistSession();
 }
 
-// ---- 触摸手势：长按弹菜单 / 长按后拖动排序（触摸屏无右键、HTML5 DnD 不可用）----
-// 仅触摸/笔生效（鼠标走原生右键 + HTML5 DnD，桌面零影响）。统一 Pointer 手势：
-//   · 未到点即移动超过阈值        → 视为横滑滚动，取消（不弹菜单、不拖动）
-//   · 按住不动到点（armed）后抬起  → 弹出页签上下文菜单
-//   · armed 后再移动超过阈值      → 进入拖动排序（跟随手指，复用 dragOver/moveTab）
-const LONG_PRESS_MS = 420;   // 到点进入 armed
-const SCROLL_CANCEL_PX = 10; // 未 armed 时超过即判为横滑滚动
+// ---- 指针手势：一套代码同时驱动桌面（鼠标）与触摸 ----
+// 拖动排序：鼠标「移动即拖」；触摸「长按到点后再移动才拖」（避免与横滑滚动冲突）。
+// 上下文菜单：鼠标走原生右键（onTabContextmenu）；触摸走「长按到点后原地抬起」。
+// 拖动机制（指示线/落位/边缘横滚）与 moveTab 完全共用，仅开始门槛按设备区分。
+const LONG_PRESS_MS = 420;   // 触摸到点进入 armed（可拖/可弹菜单）
+const SCROLL_CANCEL_PX = 10; // 触摸未 armed 时超过即判为横滑滚动
 const DRAG_START_PX = 6;     // armed 后超过即开始拖动
 
 let pressTimer: number | null = null;
 let pressPointerId: number | null = null;
 let pressTabId: number | null = null;
 let pressStart = { x: 0, y: 0 };
-let armed = false;        // 长按到点，等待「抬起=菜单」或「移动=拖动」
-let touchDragging = false; // 已进入拖动
+let pressIsMouse = false;
+let armed = false;          // 可拖状态（鼠标按下即为 true；触摸长按到点后为 true）
+let menuOnRelease = false;  // 仅触摸长按到点后为 true：原地抬起弹菜单
+let pointerDragging = false; // 已进入拖动（鼠标/触摸共用）
+let suppressClickUntil = 0;  // 拖动落位后短暂吞 click，避免补发的 click 误切活动页签
 
-// 兼容鼠标事件抑制：触摸抬指后浏览器会补发 mousedown/mouseup/click。
-// 若刚弹出菜单，这轮 mousedown 命中 ContextMenu 的「外点关闭」会让菜单"闪一下"；
-// 若刚结束拖动，这轮 click 会误激活落点页签。capture 阶段吞掉第一发，400ms 兜底解除。
+/** 页签单击激活（拖动落位后 180ms 内的补发 click 被忽略）。 */
+function onTabClick(id: number) {
+  if (performance.now() < suppressClickUntil) return;
+  store.activeId = id;
+}
+
+// 兼容鼠标事件抑制（仅触摸需要）：抬指后浏览器补发 mousedown/mouseup/click。
+// 刚弹菜单时，这轮 mousedown 命中 ContextMenu 的「外点关闭」会让菜单"闪一下"；
+// 刚结束拖动时，这轮 click 会误激活落点页签。capture 阶段吞掉第一发，400ms 兜底解除。
 let swallowHandler: ((e: MouseEvent) => void) | null = null;
 let swallowTid: number | null = null;
 function armSwallow() {
@@ -162,26 +133,35 @@ function removePressListeners() {
 }
 
 function onTabPointerDown(e: PointerEvent, id: number) {
-  if (e.pointerType === 'mouse') return; // 鼠标：原生右键 + DnD
   cancelPress();
   pressPointerId = e.pointerId;
   pressTabId = id;
   pressStart = { x: e.clientX, y: e.clientY };
-  armed = false;
-  touchDragging = false;
+  pressIsMouse = e.pointerType === 'mouse';
+  pointerDragging = false;
   addPressListeners();
-  pressTimer = window.setTimeout(onLongPressArmed, LONG_PRESS_MS);
+  if (pressIsMouse) {
+    // 鼠标：按下即可拖（移动即拖），菜单走原生右键，无长按/抬起弹菜单语义。
+    armed = true;
+    menuOnRelease = false;
+  } else {
+    // 触摸/笔：等长按到点再决定拖或弹菜单；未到点先给横滑滚动的机会。
+    armed = false;
+    menuOnRelease = false;
+    pressTimer = window.setTimeout(onLongPressArmed, LONG_PRESS_MS);
+  }
 }
 
 function onLongPressArmed() {
   pressTimer = null;
   if (pressPointerId === null) return;
   armed = true;
+  menuOnRelease = true; // 到点后原地抬起 → 弹菜单
   navigator.vibrate?.(10);
 }
 
 function onTouchMoveBlock(e: TouchEvent) {
-  if (armed || touchDragging) e.preventDefault(); // 仅 armed/拖动时阻断原生滚动
+  if (armed || pointerDragging) e.preventDefault(); // 仅 armed/拖动时阻断原生滚动
 }
 
 function onPressMove(e: PointerEvent) {
@@ -189,16 +169,17 @@ function onPressMove(e: PointerEvent) {
   const dx = e.clientX - pressStart.x;
   const dy = e.clientY - pressStart.y;
   if (!armed) {
-    if (Math.hypot(dx, dy) > SCROLL_CANCEL_PX) cancelPress(); // 横滑滚动，取消
+    // 仅触摸未到点会走到这里：超过阈值即视为横滑滚动，取消手势。
+    if (Math.hypot(dx, dy) > SCROLL_CANCEL_PX) cancelPress();
     return;
   }
-  if (!touchDragging) {
+  if (!pointerDragging) {
     if (Math.hypot(dx, dy) < DRAG_START_PX) return;
-    touchDragging = true;
-    draggingId.value = pressTabId; // 复用 DnD 的高亮样式
+    pointerDragging = true;
+    draggingId.value = pressTabId; // 拖动高亮（桌面/触摸共用样式）
   }
-  e.preventDefault();
-  updateTouchDrag(e.clientX, e.clientY);
+  if (!pressIsMouse) e.preventDefault(); // 触摸拖动时阻断原生滚动
+  updateDragAt(e.clientX, e.clientY);
 }
 
 function onPressUp(e: PointerEvent) {
@@ -208,26 +189,28 @@ function onPressUp(e: PointerEvent) {
 
 function onPressCancel(e: PointerEvent) {
   if (e.pointerId !== pressPointerId) return;
-  abortTouchDrag();
+  abortDrag();
   cancelPress();
 }
 
 /** 手势结束（抬指/取消）：按状态分派为「弹菜单」「落子排序」或「无操作」。 */
 function finishPress() {
-  const wasArmed = armed;
-  const wasDragging = touchDragging;
+  const wasDragging = pointerDragging;
+  const wantMenu = menuOnRelease;
+  const isMouse = pressIsMouse;
   const id = pressTabId;
   const { x, y } = pressStart;
   if (wasDragging) {
-    armSwallow();
+    if (!isMouse) armSwallow(); // 触摸才需吞抬指补发的 mousedown
+    suppressClickUntil = performance.now() + 180; // 拖动落位后吞掉补发的 click，避免误切活动页签
     const over = dragOver.value;
     if (id != null && over && over.id !== id) moveTab(id, over.id, over.side);
-    abortTouchDrag();
+    abortDrag();
     cancelPress();
     return;
   }
-  if (wasArmed && id != null) {
-    // 长按后原地抬起 → 弹上下文菜单（先吞掉抬指补发的 mousedown，防"闪一下"）
+  if (wantMenu && id != null) {
+    // 触摸长按后原地抬起 → 弹上下文菜单（先吞掉抬指补发的 mousedown，防"闪一下"）
     armSwallow();
     store.activeId = id;
     ctxMenu.value = { x, y, tabId: id };
@@ -235,9 +218,10 @@ function finishPress() {
   cancelPress();
 }
 
-function abortTouchDrag() {
-  touchDragging = false;
+function abortDrag() {
+  pointerDragging = false;
   armed = false;
+  menuOnRelease = false;
   draggingId.value = null;
   dragOver.value = null;
 }
@@ -246,13 +230,15 @@ function cancelPress() {
   if (pressTimer !== null) { clearTimeout(pressTimer); pressTimer = null; }
   pressPointerId = null;
   pressTabId = null;
+  pressIsMouse = false;
   armed = false;
-  touchDragging = false;
+  menuOnRelease = false;
+  pointerDragging = false;
   removePressListeners();
 }
 
-/** 拖动中：按手指位置算放置指示（拖动本体 pointer-events:none，见样式，可命中下层页签）。 */
-function updateTouchDrag(x: number, y: number) {
+/** 拖动中：按指针位置算放置指示（拖动本体 pointer-events:none，见样式，可命中下层页签）。 */
+function updateDragAt(x: number, y: number) {
   if (pressTabId == null) return;
   const el = tabsEl.value;
   if (!el) return;
@@ -377,8 +363,6 @@ watch(() => [store.activeId, store.tabs.length], async () => {
         ref="tabsEl"
         class="tabs"
         @scroll="updateFade"
-        @dragover="onContainerDragOver"
-        @drop="onContainerDrop"
       >
         <div
           v-for="tab in store.tabs"
@@ -392,14 +376,9 @@ watch(() => [store.activeId, store.tabs.length], async () => {
             'drag-after': dragOver?.id === tab.id && dragOver.side === 'after',
           }"
           :title="tab.path || tab.name"
-          draggable="true"
-          @click="store.activeId = tab.id"
+          @click="onTabClick(tab.id)"
           @pointerdown="onTabPointerDown($event, tab.id)"
           @contextmenu.prevent="onTabContextmenu($event, tab.id)"
-          @dragstart="onDragStart($event, tab.id)"
-          @dragover="onDragOver($event, tab.id)"
-          @drop="onDrop($event, tab.id)"
-          @dragend="onDragEnd"
         >
           <span class="tab-name">{{ tab.name }}</span>
           <span v-if="tab.dirty" class="tab-dirty" :title="t('unsaved')">●</span>
