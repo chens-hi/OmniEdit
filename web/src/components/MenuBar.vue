@@ -557,14 +557,16 @@ void lang;
 }
 @keyframes mFadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-/* 抽屉面板：左侧滑入，宽度不超过屏宽 85% */
+/* 抽屉面板：左侧滑入，宽度不超过屏宽 85%。
+   外框用 --toolbar-bg（与分组头同色，顶部留白不再露白块），
+   展开的菜单内容区用 --bg（白/深内容面板，见 .m-group-body）。 */
 .m-drawer {
   position: fixed;
   top: 0;
   bottom: 0;
   left: 0;
   width: min(320px, 85vw);
-  background: var(--bg);
+  background: var(--toolbar-bg);
   border-right: 1px solid var(--border);
   z-index: 101;
   display: flex;
@@ -577,9 +579,13 @@ void lang;
 .m-drawer-body {
   flex: 1;
   overflow-y: auto;
+  /* 隐藏滚动条（与 TabBar 一致；移动端抽屉靠手势滚动，不需要滚动条），
+     避免内容较长时右侧出现滚动条被误认为色块 */
+  scrollbar-width: none;
   /* 去掉了标题行：顶部留白 + 适配刘海/状态栏安全区 */
   padding: calc(16px + env(safe-area-inset-top, 0px)) 0 24px;
 }
+.m-drawer-body::-webkit-scrollbar { display: none; }
 
 /* 手风琴分组头 */
 .m-group-head {
@@ -599,7 +605,8 @@ void lang;
 }
 .m-group-head:hover { background: color-mix(in srgb, var(--toolbar-bg) 80%, var(--fg) 8%); }
 .m-group-arrow { color: var(--fg-muted); font-size: 12px; }
-.m-group-body { padding: 4px 0; }
+/* 展开的菜单内容区：用 --bg（浅色=白、深色=深）面板，与灰色抽屉外框区分 */
+.m-group-body { padding: 4px 0; background: var(--bg); }
 
 /* 抽屉内菜单项：加大触摸目标（≥44px 高），覆盖桌面的小 padding */
 .m-drawer .m-item {
