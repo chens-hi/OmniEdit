@@ -45,7 +45,7 @@ function settle(choice: 'save' | 'discard' | 'cancel') {
           {{ t('batchCloseDrafts') }}<span class="bcm-count">{{ bc.toDiscard.length }}</span>
         </div>
         <ul class="bcm-list">
-          <li v-for="f in bc.toDiscard" :key="f.id" class="bcm-row">
+          <li v-for="f in bc.toDiscard" :key="f.id" class="bcm-row bcm-row--warn">
             <span class="bcm-name">{{ f.name }}</span>
           </li>
         </ul>
@@ -67,9 +67,10 @@ function settle(choice: 'save' | 'discard' | 'cancel') {
   scrollbar-width: thin;
 }
 .bcm-group + .bcm-group { margin-top: 14px; }
+/* 分组标题：未保存组（将被保存）用正常 --fg；丢弃组（将丢失）用 --warning 警示 */
 .bcm-group-title {
   font-size: 12px;
-  color: var(--fg-muted);
+  color: var(--fg);
   margin-bottom: 6px;
   display: flex;
   align-items: center;
@@ -103,6 +104,8 @@ function settle(choice: 'save' | 'discard' | 'cancel') {
   border-bottom: 1px solid var(--border);
 }
 .bcm-row:last-child { border-bottom: none; }
+/* 丢弃组的草稿：将丢失，用警示色提示 */
+.bcm-row--warn { color: var(--warning); }
 .bcm-name {
   flex: 1;
   overflow: hidden;
