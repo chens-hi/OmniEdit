@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.5.81
+version=0.5.82
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.5.81: 编辑区自定义右键菜单（复制/剪切/粘贴/全选）
+changelog=0.5.82: 编辑区右键菜单显示快捷键（复制 Ctrl+C / 剪切 Ctrl+X / 粘贴 Ctrl+V / 全选 Ctrl+A）

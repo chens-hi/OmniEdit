@@ -17,6 +17,8 @@ export interface CtxItem {
   label: string;
   danger?: boolean;
   disabled?: boolean;
+  /** 右侧显示的快捷键（如 Ctrl+C），仅展示不绑定。 */
+  shortcut?: string;
   action?: () => void;
   /** 子菜单（一级）：hover 展开，子项点击即执行。 */
   children?: CtxItem[];
@@ -105,7 +107,10 @@ onBeforeUnmount(() => {
           :class="{ danger: item.danger, disabled: item.disabled }"
           :disabled="item.disabled"
           @click="run(item)"
-        >{{ item.label }}</button>
+        >
+          <span class="ctx-label">{{ item.label }}</span>
+          <span v-if="item.shortcut" class="ctx-shortcut">{{ item.shortcut }}</span>
+        </button>
 
         <template v-else>
           <button class="ctx-item" :class="{ disabled: item.disabled }" :disabled="item.disabled">
@@ -158,6 +163,12 @@ onBeforeUnmount(() => {
 }
 .ctx-item:hover:not(.disabled) {
   background: color-mix(in srgb, var(--fg) 10%, transparent);
+}
+.ctx-label { flex: 1; }
+.ctx-shortcut {
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 .ctx-item.danger { color: var(--error); }
 .ctx-item.disabled { opacity: 0.4; cursor: default; }
