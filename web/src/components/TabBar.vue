@@ -31,63 +31,7 @@ function onTabContextmenu(e: MouseEvent, id: number) {
   ctxMenu.value = { x: e.clientX, y: e.clientY, tabId: id };
 }
 
-// ---- 长按触发上下文菜单（触摸设备无右键，长按为移动端标准交互）----
-// 仅触摸/笔生效（鼠标走 contextmenu，桌面零影响）。长按期间用移动阈值区分
-// 横滑：一旦判定为滑动（含原生滚动触发的 pointercancel）即取消，不误弹菜单。
-const LONG_PRESS_MS = 480;
-const MOVE_THRESHOLD = 10; // px，超过即视为滑动
-let pressTimer: number | null = null;
-let pressPointerId: number | null = null;
-let pressTabId: number | null = null;
-let pressStart = { x: 0, y: 0 };
-
-function clearPress() {
-  if (pressTimer !== null) { clearTimeout(pressTimer); pressTimer = null; }
-  pressPointerId = null;
-  pressTabId = null;
-  window.removeEventListener('pointermove', onPressMove);
-  window.removeEventListener('pointerup', onPressUp);
-  window.removeEventListener('pointercancel', onPressCancel);
-}
-
-function onTabPointerDown(e: PointerEvent, id: number) {
-  if (e.pointerType === 'mouse') return; // 鼠标：走右键
-  clearPress();
-  pressPointerId = e.pointerId;
-  pressTabId = id;
-  pressStart = { x: e.clientX, y: e.clientY };
-  window.addEventListener('pointermove', onPressMove);
-  window.addEventListener('pointerup', onPressUp);
-  window.addEventListener('pointercancel', onPressCancel);
-  pressTimer = window.setTimeout(() => fireLongPress(e.clientX, e.clientY), LONG_PRESS_MS);
-}
-
-function onPressMove(e: PointerEvent) {
-  if (e.pointerId !== pressPointerId) return;
-  const dx = e.clientX - pressStart.x;
-  const dy = e.clientY - pressStart.y;
-  if (Math.hypot(dx, dy) > MOVE_THRESHOLD) clearPress(); // 滑动，取消长按
-}
-
-function onPressUp(e: PointerEvent) {
-  if (e.pointerId !== pressPointerId) return;
-  clearPress();
-}
-
-function onPressCancel(e: PointerEvent) {
-  if (e.pointerId !== pressPointerId) return;
-  clearPress();
-}
-
-/** 长按到点：激活该标签 + 在按点弹菜单 + 轻触觉反馈（不支持则静默）。 */
-function fireLongPress(x: number, y: number) {
-  const id = pressTabId;
-  clearPress();
-  if (id == null) return;
-  navigator.vibrate?.(10);
-  store.activeId = id;
-  ctxMenu.value = { x, y, tabId: id };
-}
+// 触摸设备的长按菜单与拖动排序统一由下方「触摸手势」块处理（Pointer 手势）。
 
 /** 右键菜单项：关闭 / 关闭右侧所有。 */
 const ctxItems = computed(() => {
@@ -166,6 +110,175 @@ function moveTab(fromId: number, toId: number, side: 'before' | 'after') {
   store.persistSession();
 }
 
+// ---- 触摸手势：长按弹菜单 / 长按后拖动排序（触摸屏无右键、HTML5 DnD 不可用）----
+// 仅触摸/笔生效（鼠标走原生右键 + HTML5 DnD，桌面零影响）。统一 Pointer 手势：
+//   · 未到点即移动超过阈值        → 视为横滑滚动，取消（不弹菜单、不拖动）
+//   · 按住不动到点（armed）后抬起  → 弹出页签上下文菜单
+//   · armed 后再移动超过阈值      → 进入拖动排序（跟随手指，复用 dragOver/moveTab）
+const LONG_PRESS_MS = 420;   // 到点进入 armed
+const SCROLL_CANCEL_PX = 10; // 未 armed 时超过即判为横滑滚动
+const DRAG_START_PX = 6;     // armed 后超过即开始拖动
+
+let pressTimer: number | null = null;
+let pressPointerId: number | null = null;
+let pressTabId: number | null = null;
+let pressStart = { x: 0, y: 0 };
+let armed = false;        // 长按到点，等待「抬起=菜单」或「移动=拖动」
+let touchDragging = false; // 已进入拖动
+
+// 兼容鼠标事件抑制：触摸抬指后浏览器会补发 mousedown/mouseup/click。
+// 若刚弹出菜单，这轮 mousedown 命中 ContextMenu 的「外点关闭」会让菜单"闪一下"；
+// 若刚结束拖动，这轮 click 会误激活落点页签。capture 阶段吞掉第一发，400ms 兜底解除。
+let swallowHandler: ((e: MouseEvent) => void) | null = null;
+let swallowTid: number | null = null;
+function armSwallow() {
+  disarmSwallow();
+  swallowHandler = (e: MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    disarmSwallow();
+  };
+  swallowTid = window.setTimeout(disarmSwallow, 400);
+  document.addEventListener('mousedown', swallowHandler, true);
+}
+function disarmSwallow() {
+  if (swallowHandler) document.removeEventListener('mousedown', swallowHandler, true);
+  swallowHandler = null;
+  if (swallowTid !== null) { clearTimeout(swallowTid); swallowTid = null; }
+}
+
+function addPressListeners() {
+  window.addEventListener('pointermove', onPressMove, { passive: false });
+  window.addEventListener('pointerup', onPressUp);
+  window.addEventListener('pointercancel', onPressCancel);
+  // armed 期间阻断原生触摸滚动（拖动与横滑共享横向手势），靠 armed 门控放行平时滚动。
+  window.addEventListener('touchmove', onTouchMoveBlock, { passive: false });
+}
+function removePressListeners() {
+  window.removeEventListener('pointermove', onPressMove);
+  window.removeEventListener('pointerup', onPressUp);
+  window.removeEventListener('pointercancel', onPressCancel);
+  window.removeEventListener('touchmove', onTouchMoveBlock);
+}
+
+function onTabPointerDown(e: PointerEvent, id: number) {
+  if (e.pointerType === 'mouse') return; // 鼠标：原生右键 + DnD
+  cancelPress();
+  pressPointerId = e.pointerId;
+  pressTabId = id;
+  pressStart = { x: e.clientX, y: e.clientY };
+  armed = false;
+  touchDragging = false;
+  addPressListeners();
+  pressTimer = window.setTimeout(onLongPressArmed, LONG_PRESS_MS);
+}
+
+function onLongPressArmed() {
+  pressTimer = null;
+  if (pressPointerId === null) return;
+  armed = true;
+  navigator.vibrate?.(10);
+}
+
+function onTouchMoveBlock(e: TouchEvent) {
+  if (armed || touchDragging) e.preventDefault(); // 仅 armed/拖动时阻断原生滚动
+}
+
+function onPressMove(e: PointerEvent) {
+  if (e.pointerId !== pressPointerId) return;
+  const dx = e.clientX - pressStart.x;
+  const dy = e.clientY - pressStart.y;
+  if (!armed) {
+    if (Math.hypot(dx, dy) > SCROLL_CANCEL_PX) cancelPress(); // 横滑滚动，取消
+    return;
+  }
+  if (!touchDragging) {
+    if (Math.hypot(dx, dy) < DRAG_START_PX) return;
+    touchDragging = true;
+    draggingId.value = pressTabId; // 复用 DnD 的高亮样式
+  }
+  e.preventDefault();
+  updateTouchDrag(e.clientX, e.clientY);
+}
+
+function onPressUp(e: PointerEvent) {
+  if (e.pointerId !== pressPointerId) return;
+  finishPress();
+}
+
+function onPressCancel(e: PointerEvent) {
+  if (e.pointerId !== pressPointerId) return;
+  abortTouchDrag();
+  cancelPress();
+}
+
+/** 手势结束（抬指/取消）：按状态分派为「弹菜单」「落子排序」或「无操作」。 */
+function finishPress() {
+  const wasArmed = armed;
+  const wasDragging = touchDragging;
+  const id = pressTabId;
+  const { x, y } = pressStart;
+  if (wasDragging) {
+    armSwallow();
+    const over = dragOver.value;
+    if (id != null && over && over.id !== id) moveTab(id, over.id, over.side);
+    abortTouchDrag();
+    cancelPress();
+    return;
+  }
+  if (wasArmed && id != null) {
+    // 长按后原地抬起 → 弹上下文菜单（先吞掉抬指补发的 mousedown，防"闪一下"）
+    armSwallow();
+    store.activeId = id;
+    ctxMenu.value = { x, y, tabId: id };
+  }
+  cancelPress();
+}
+
+function abortTouchDrag() {
+  touchDragging = false;
+  armed = false;
+  draggingId.value = null;
+  dragOver.value = null;
+}
+
+function cancelPress() {
+  if (pressTimer !== null) { clearTimeout(pressTimer); pressTimer = null; }
+  pressPointerId = null;
+  pressTabId = null;
+  armed = false;
+  touchDragging = false;
+  removePressListeners();
+}
+
+/** 拖动中：按手指位置算放置指示（拖动本体 pointer-events:none，见样式，可命中下层页签）。 */
+function updateTouchDrag(x: number, y: number) {
+  if (pressTabId == null) return;
+  const el = tabsEl.value;
+  if (!el) return;
+  const hit = document.elementFromPoint(x, y) as HTMLElement | null;
+  const tabEl = hit?.closest('.tab') as HTMLElement | null;
+  const hitId = tabEl?.dataset.tabId ? Number(tabEl.dataset.tabId) : null;
+  if (hitId !== null && hitId !== pressTabId) {
+    const rect = tabEl!.getBoundingClientRect();
+    dragOver.value = { id: hitId, side: x < rect.left + rect.width / 2 ? 'before' : 'after' };
+  } else if (hitId === null) {
+    // 落在页签条区域但不在任何页签上（末尾间隙/＋附近）→ 放到最右
+    const rect = el.getBoundingClientRect();
+    if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+      const last = store.tabs[store.tabs.length - 1];
+      if (last && last.id !== pressTabId) dragOver.value = { id: last.id, side: 'after' };
+    } else {
+      dragOver.value = null;
+    }
+  }
+  // 接近左右边缘时自动横滚，便于页签多时拖到屏外
+  const rect = el.getBoundingClientRect();
+  const edge = 40;
+  if (x < rect.left + edge) el.scrollLeft -= 14;
+  else if (x > rect.right - edge) el.scrollLeft += 14;
+}
+
 /**
  * 竖滚轮转横滚（事件挂在 .tabbar，悬浮在「＋」上也能滚）。
  * 平滑化：滚轮事件只累加目标位置，rAF 指数逼近——离散的 100px/格 跳变
@@ -230,7 +343,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   ro?.disconnect();
   stopSmooth();
-  clearPress();
+  cancelPress();
+  disarmSwallow();
 });
 
 // 活动标签变化 / 开关标签后：把活动页滚入可视区 + 刷新边缘渐变。
@@ -270,6 +384,7 @@ watch(() => [store.activeId, store.tabs.length], async () => {
           v-for="tab in store.tabs"
           :key="tab.id"
           class="tab"
+          :data-tab-id="tab.id"
           :class="{
             active: tab.id === store.activeId,
             dragging: draggingId === tab.id,
@@ -365,8 +480,10 @@ watch(() => [store.activeId, store.tabs.length], async () => {
   user-select: none;
   -webkit-touch-callout: none;
 }
-/* 拖拽：本体半透明，落点侧亮 accent 指示线（左半区=线在左缘=插其前，反之在后）。 */
-.tab.dragging { opacity: 0.45; }
+/* 拖拽：本体半透明，落点侧亮 accent 指示线（左半区=线在左缘=插其前，反之在后）。
+   pointer-events:none 让触摸拖动时 elementFromPoint 能穿透本体命中下层页签
+   （HTML5 DnD 同样受益：拖动源不拦截 dragover）。 */
+.tab.dragging { opacity: 0.45; pointer-events: none; }
 .tab.drag-before::before,
 .tab.drag-after::after {
   content: '';

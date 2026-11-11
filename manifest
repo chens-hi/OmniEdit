@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.5.53
+version=0.5.54
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.5.53: 移动端/窄屏适配——窄屏抽屉菜单（汉堡触发、手风琴展开）、搜索浮窗与状态栏响应式、页签长按呼出上下文菜单（触摸设备）
+changelog=0.5.54: 修复触摸端长按菜单"闪一下即关"（吞掉抬指补发的 mousedown）；触摸屏支持页签长按拖动排序（Pointer 手势，桌面键鼠拖拽不变）
