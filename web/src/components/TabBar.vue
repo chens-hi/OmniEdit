@@ -75,9 +75,10 @@ function moveTab(fromId: number, toId: number, side: 'before' | 'after') {
 
 // ---- 指针手势：一套代码同时驱动桌面（鼠标）与触摸 ----
 // 拖动排序：鼠标「移动即拖」；触摸「长按到点后再移动才拖」（避免与横滑滚动冲突）。
-// 上下文菜单：鼠标走原生右键（onTabContextmenu）；触摸走「长按到点后原地抬起」。
+// 长按只用于拖动（抓起页签），不再弹菜单——避免拖动与长按菜单争抢同一手势。
+// 上下文菜单仅在桌面走原生右键（onTabContextmenu）；触摸端关闭走每页签的 ×。
 // 拖动机制（指示线/落位/边缘横滚）与 moveTab 完全共用，仅开始门槛按设备区分。
-const LONG_PRESS_MS = 420;   // 触摸到点进入 armed（可拖/可弹菜单）
+const LONG_PRESS_MS = 420;   // 触摸到点进入 armed（可拖）
 const SCROLL_CANCEL_PX = 10; // 触摸未 armed 时超过即判为横滑滚动
 const DRAG_START_PX = 6;     // armed 后超过即开始拖动
 
@@ -87,7 +88,6 @@ let pressTabId: number | null = null;
 let pressStart = { x: 0, y: 0 };
 let pressIsMouse = false;
 let armed = false;          // 可拖状态（鼠标按下即为 true；触摸长按到点后为 true）
-let menuOnRelease = false;  // 仅触摸长按到点后为 true：原地抬起弹菜单
 let pointerDragging = false; // 已进入拖动（鼠标/触摸共用）
 let suppressClickUntil = 0;  // 拖动落位后短暂吞 click，避免补发的 click 误切活动页签
 
@@ -95,27 +95,6 @@ let suppressClickUntil = 0;  // 拖动落位后短暂吞 click，避免补发的
 function onTabClick(id: number) {
   if (performance.now() < suppressClickUntil) return;
   store.activeId = id;
-}
-
-// 兼容鼠标事件抑制（仅触摸需要）：抬指后浏览器补发 mousedown/mouseup/click。
-// 刚弹菜单时，这轮 mousedown 命中 ContextMenu 的「外点关闭」会让菜单"闪一下"；
-// 刚结束拖动时，这轮 click 会误激活落点页签。capture 阶段吞掉第一发，400ms 兜底解除。
-let swallowHandler: ((e: MouseEvent) => void) | null = null;
-let swallowTid: number | null = null;
-function armSwallow() {
-  disarmSwallow();
-  swallowHandler = (e: MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    disarmSwallow();
-  };
-  swallowTid = window.setTimeout(disarmSwallow, 400);
-  document.addEventListener('mousedown', swallowHandler, true);
-}
-function disarmSwallow() {
-  if (swallowHandler) document.removeEventListener('mousedown', swallowHandler, true);
-  swallowHandler = null;
-  if (swallowTid !== null) { clearTimeout(swallowTid); swallowTid = null; }
 }
 
 function addPressListeners() {
@@ -141,13 +120,11 @@ function onTabPointerDown(e: PointerEvent, id: number) {
   pointerDragging = false;
   addPressListeners();
   if (pressIsMouse) {
-    // 鼠标：按下即可拖（移动即拖），菜单走原生右键，无长按/抬起弹菜单语义。
+    // 鼠标：按下即可拖（移动即拖），菜单走原生右键。
     armed = true;
-    menuOnRelease = false;
   } else {
-    // 触摸/笔：等长按到点再决定拖或弹菜单；未到点先给横滑滚动的机会。
+    // 触摸/笔：等长按到点才可拖；未到点先给横滑滚动的机会。
     armed = false;
-    menuOnRelease = false;
     pressTimer = window.setTimeout(onLongPressArmed, LONG_PRESS_MS);
   }
 }
@@ -155,8 +132,7 @@ function onTabPointerDown(e: PointerEvent, id: number) {
 function onLongPressArmed() {
   pressTimer = null;
   if (pressPointerId === null) return;
-  armed = true;
-  menuOnRelease = true; // 到点后原地抬起 → 弹菜单
+  armed = true; // 已抓起，移动即拖动
   navigator.vibrate?.(10);
 }
 
@@ -193,35 +169,22 @@ function onPressCancel(e: PointerEvent) {
   cancelPress();
 }
 
-/** 手势结束（抬指/取消）：按状态分派为「弹菜单」「落子排序」或「无操作」。 */
+/** 手势结束（抬指/取消）：拖动则落位排序，否则无操作（长按只服务拖动）。 */
 function finishPress() {
   const wasDragging = pointerDragging;
-  const wantMenu = menuOnRelease;
-  const isMouse = pressIsMouse;
   const id = pressTabId;
-  const { x, y } = pressStart;
   if (wasDragging) {
-    if (!isMouse) armSwallow(); // 触摸才需吞抬指补发的 mousedown
-    suppressClickUntil = performance.now() + 180; // 拖动落位后吞掉补发的 click，避免误切活动页签
+    suppressClickUntil = performance.now() + 180; // 落位后吞掉补发的 click，避免误切活动页签
     const over = dragOver.value;
     if (id != null && over && over.id !== id) moveTab(id, over.id, over.side);
-    abortDrag();
-    cancelPress();
-    return;
   }
-  if (wantMenu && id != null) {
-    // 触摸长按后原地抬起 → 弹上下文菜单（先吞掉抬指补发的 mousedown，防"闪一下"）
-    armSwallow();
-    store.activeId = id;
-    ctxMenu.value = { x, y, tabId: id };
-  }
+  abortDrag();
   cancelPress();
 }
 
 function abortDrag() {
   pointerDragging = false;
   armed = false;
-  menuOnRelease = false;
   draggingId.value = null;
   dragOver.value = null;
 }
@@ -232,7 +195,6 @@ function cancelPress() {
   pressTabId = null;
   pressIsMouse = false;
   armed = false;
-  menuOnRelease = false;
   pointerDragging = false;
   removePressListeners();
 }
@@ -330,7 +292,6 @@ onBeforeUnmount(() => {
   ro?.disconnect();
   stopSmooth();
   cancelPress();
-  disarmSwallow();
 });
 
 // 活动标签变化 / 开关标签后：把活动页滚入可视区 + 刷新边缘渐变。
