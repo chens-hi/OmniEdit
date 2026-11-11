@@ -42,7 +42,7 @@ const ctxItems = computed(() => {
     {
       label: t('close'),
       children: [
-        { label: t('closeCurrent'), action: () => { if (id != null) void store.requestCloseMany([id]); } },
+        { label: t('closeCurrent'), action: () => { if (id != null) void store.closeTab(id); } },
         {
           label: t('closeRight'),
           disabled: idx < 0 || idx >= store.tabs.length - 1,

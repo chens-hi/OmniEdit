@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.5.70
+version=0.5.71
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.5.70: 批量关闭模态配色区分——未保存组用正常色、丢弃组用警示色
+changelog=0.5.71: 关闭单个页签改用通用确认框（不再列文件），批量关闭仍走列表模态

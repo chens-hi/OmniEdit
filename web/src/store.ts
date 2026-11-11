@@ -563,12 +563,17 @@ export const useEditorStore = defineStore('editor', () => {
 
   /**
    * 关闭单个标签（页签 × 按钮 / 文件菜单关闭 / 右键当前页签）。
-   * 脏页签走批量关闭模态（一次询问是否保存），复用与批量一致的处理。
+   * 单关时用户已知是哪个页签，用通用确认框即可（不列文件）；
+   * 脏页签弹「有未保存修改，确定关闭？」，取消视为未关闭。
+   * 批量关闭（右侧/左侧/其他/所有）走 requestCloseMany 的列表模态。
    * 返回是否已关闭（取消=false）。
    */
   async function closeTab(id: number): Promise<boolean> {
-    const r = await requestCloseMany([id]);
-    return r !== 'cancel';
+    const tab = tabById(id);
+    if (!tab) return false;
+    if (tab.dirty && !(await confirm(`${tab.name} ${t('confirmCloseDirty')}`, { danger: true }))) return false;
+    removeTabRaw(id);
+    return true;
   }
 
   /**
