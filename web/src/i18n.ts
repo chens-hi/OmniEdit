@@ -136,6 +136,7 @@ const dict = {
   batchCloseDrafts: { zh: '以下草稿将丢弃：', en: 'These drafts will be discarded:' },
   batchCloseSaveAll: { zh: '保存并关闭', en: 'Save & Close' },
   batchCloseDiscard: { zh: '放弃并关闭', en: 'Discard & Close' },
+  batchCloseSingleMsg: { zh: '有未保存的修改，是否保存后关闭？', en: 'Has unsaved changes. Save before closing?' },
   tabLimitReached: {
     zh: '标签数已达上限（{n}），请先关闭部分标签',
     en: 'Tab limit reached ({n}); close some tabs first',

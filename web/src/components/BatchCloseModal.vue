@@ -20,6 +20,9 @@ const store = useEditorStore();
 const bc = computed(() => store.batchClose);
 const hasSave = computed(() => bc.value.toSave.length > 0);
 const hasDiscard = computed(() => bc.value.toDiscard.length > 0);
+// 单个页签关闭：中间不列文件（用户已知关的是哪个），只显示文件名 + 提示。
+const isSingle = computed(() => bc.value.ids.length === 1);
+const singleName = computed(() => bc.value.toSave[0]?.name ?? bc.value.toDiscard[0]?.name ?? '');
 
 function settle(choice: 'save' | 'discard' | 'cancel') {
   void store.settleBatchClose(choice);
@@ -29,27 +32,35 @@ function settle(choice: 'save' | 'discard' | 'cancel') {
 <template>
   <AppModal :title="t('batchCloseTitle')" :width="440" @close="settle('cancel')">
     <div class="bcm-body">
-      <div v-if="hasSave" class="bcm-group">
-        <div class="bcm-group-title">
-          {{ t('batchCloseModified') }}<span class="bcm-count">{{ bc.toSave.length }}</span>
-        </div>
-        <ul class="bcm-list">
-          <li v-for="f in bc.toSave" :key="f.id" class="bcm-row">
-            <span class="bcm-name">{{ f.name }}</span>
-          </li>
-        </ul>
+      <!-- 单个页签：用户已知关的是哪个，中间不列文件，只显示文件名 + 提示 -->
+      <div v-if="isSingle" class="bcm-single">
+        <div class="bcm-single-name">{{ singleName }}</div>
+        <div class="bcm-single-msg">{{ t('batchCloseSingleMsg') }}</div>
       </div>
 
-      <div v-if="hasDiscard" class="bcm-group">
-        <div class="bcm-group-title bcm-group-title--warn">
-          {{ t('batchCloseDrafts') }}<span class="bcm-count">{{ bc.toDiscard.length }}</span>
+      <template v-else>
+        <div v-if="hasSave" class="bcm-group">
+          <div class="bcm-group-title">
+            {{ t('batchCloseModified') }}<span class="bcm-count">{{ bc.toSave.length }}</span>
+          </div>
+          <ul class="bcm-list">
+            <li v-for="f in bc.toSave" :key="f.id" class="bcm-row">
+              <span class="bcm-name">{{ f.name }}</span>
+            </li>
+          </ul>
         </div>
-        <ul class="bcm-list">
-          <li v-for="f in bc.toDiscard" :key="f.id" class="bcm-row bcm-row--warn">
-            <span class="bcm-name">{{ f.name }}</span>
-          </li>
-        </ul>
-      </div>
+
+        <div v-if="hasDiscard" class="bcm-group">
+          <div class="bcm-group-title bcm-group-title--warn">
+            {{ t('batchCloseDrafts') }}<span class="bcm-count">{{ bc.toDiscard.length }}</span>
+          </div>
+          <ul class="bcm-list">
+            <li v-for="f in bc.toDiscard" :key="f.id" class="bcm-row bcm-row--warn">
+              <span class="bcm-name">{{ f.name }}</span>
+            </li>
+          </ul>
+        </div>
+      </template>
     </div>
     <template #footer>
       <button class="cd-btn ghost" @click="settle('cancel')">{{ t('cancel') }}</button>
@@ -67,6 +78,18 @@ function settle(choice: 'save' | 'discard' | 'cancel') {
   scrollbar-width: thin;
 }
 .bcm-group + .bcm-group { margin-top: 14px; }
+/* 单个页签关闭：不列文件，只显示文件名 + 提示 */
+.bcm-single-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg);
+  word-break: break-all;
+  margin-bottom: 6px;
+}
+.bcm-single-msg {
+  font-size: 13px;
+  color: var(--fg-muted);
+}
 /* 分组标题：未保存组（将被保存）用正常 --fg；丢弃组（将丢失）用 --warning 警示 */
 .bcm-group-title {
   font-size: 12px;
