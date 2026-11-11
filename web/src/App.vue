@@ -35,6 +35,7 @@ import TabBar from './components/TabBar.vue';
 import MarkdownPreview from './components/MarkdownPreview.vue';
 import SaveAsDialog from './components/SaveAsDialog.vue';
 import ConfirmDialog from './components/ConfirmDialog.vue';
+import ContextMenu from './components/ContextMenu.vue';
 import BatchCloseModal from './components/BatchCloseModal.vue';
 import AppModal from './components/AppModal.vue';
 import AppToast from './components/AppToast.vue';
@@ -44,7 +45,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.80';
+const appVersion = '0.5.81';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -423,6 +424,69 @@ watch(() => [store.showSpaces, store.showTabs, store.showLineBreaks], () => {
   view?.dispatch({ effects: whitespaceCompartment.reconfigure(buildWhitespaceExts()) });
 });
 
+// ---- 编辑区自定义右键菜单：复制/剪切/粘贴/全选（基础版，后续可扩展）----
+// 复用页签右键的 ContextMenu 组件；剪贴板走 navigator.clipboard API（不依赖
+// 浏览器原生菜单的焦点，菜单点击后仍可操作已挂载的 view）。
+const editorCtx = ref<{ x: number; y: number } | null>(null);
+
+/** 当前主选区（无则 null）。菜单打开期间选区稳定，可安全读取。 */
+function mainSel() {
+  if (!view) return null;
+  const s = view.state.selection.main;
+  return s.empty ? null : { from: s.from, to: s.to, text: view.state.sliceDoc(s.from, s.to) };
+}
+
+function ctxCopy() {
+  const sel = mainSel();
+  if (!sel) return;
+  void navigator.clipboard.writeText(sel.text).catch(() => {});
+}
+
+function ctxCut() {
+  const sel = mainSel();
+  if (!view || !sel) return;
+  void navigator.clipboard.writeText(sel.text).catch(() => {});
+  view.dispatch({ changes: { from: sel.from, to: sel.to }, selection: { anchor: sel.from } });
+}
+
+async function ctxPaste() {
+  if (!view) return;
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text) return;
+    const { from, to } = view.state.selection.main;
+    view.dispatch({
+      changes: { from, to, insert: text },
+      selection: { anchor: from + text.length },
+    });
+  } catch {
+    // 剪贴板读取被拒（权限/非安全上下文）：静默忽略
+  }
+}
+
+function ctxSelectAll() {
+  if (!view) return;
+  view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } });
+}
+
+function onEditorContextmenu(e: MouseEvent) {
+  // 空白页无编辑内容，走浏览器默认菜单
+  if (!store.activeTab) return;
+  e.preventDefault();
+  editorCtx.value = { x: e.clientX, y: e.clientY };
+}
+
+const editorCtxItems = computed(() => {
+  const hasSel = !!mainSel();
+  const hasDoc = !!view && view.state.doc.length > 0;
+  return [
+    { label: t('ctxCopy'), disabled: !hasSel, action: ctxCopy },
+    { label: t('ctxCut'), disabled: !hasSel, action: ctxCut },
+    { label: t('ctxPaste'), action: () => void ctxPaste() },
+    { label: t('ctxSelectAll'), disabled: !hasDoc, action: ctxSelectAll },
+  ];
+});
+
 onMounted(async () => {
   // 初始化主题（跟随宿主深/浅色）；失败保持默认暗色，不阻塞编辑器。
   void initTheme();
@@ -454,7 +518,8 @@ onMounted(async () => {
       <div class="main">
         <TabBar v-if="store.tabs.length" />
         <div class="editor-area">
-          <div class="editor-pane">
+          <!-- 编辑区右键：自定义 复制/剪切/粘贴/全选（空白页走浏览器默认菜单） -->
+          <div class="editor-pane" @contextmenu="onEditorContextmenu">
             <div id="editor-host" class="editor-host" />
             <!-- 空白页：双击新建页签（pointer-events 仅开在占位层，双击热区=整块空白） -->
             <div v-if="!store.activeTab" class="placeholder" @dblclick="store.newUntitled()">
@@ -520,6 +585,15 @@ onMounted(async () => {
 
     <!-- 批量关闭确认模态（store.batchClose 驱动；单/多脏标签关闭复用） -->
     <BatchCloseModal v-if="store.batchClose.visible" />
+
+    <!-- 编辑区右键菜单（复制/剪切/粘贴/全选） -->
+    <ContextMenu
+      v-if="editorCtx"
+      :x="editorCtx.x"
+      :y="editorCtx.y"
+      :items="editorCtxItems"
+      @close="editorCtx = null"
+    />
 
     <AppModal v-if="showAbout" :title="'OmniEdit'" :width="360" @close="showAbout = false">
       <div>{{ t('welcomeSub') }}</div>

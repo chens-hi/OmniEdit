@@ -137,6 +137,11 @@ const dict = {
   batchCloseSaveAll: { zh: '保存并关闭', en: 'Save & Close' },
   batchCloseDiscard: { zh: '放弃并关闭', en: 'Discard & Close' },
   batchCloseSingleMsg: { zh: '有未保存的修改，是否保存后关闭？', en: 'Has unsaved changes. Save before closing?' },
+  // 编辑区右键菜单
+  ctxCopy: { zh: '复制', en: 'Copy' },
+  ctxCut: { zh: '剪切', en: 'Cut' },
+  ctxPaste: { zh: '粘贴', en: 'Paste' },
+  ctxSelectAll: { zh: '全选', en: 'Select All' },
   tabLimitReached: {
     zh: '标签数已达上限（{n}），请先关闭部分标签',
     en: 'Tab limit reached ({n}); close some tabs first',
