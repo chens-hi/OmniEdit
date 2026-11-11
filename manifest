@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.5.73
+version=0.5.74
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.5.73: 关闭单个页签的批量框中间不列文件，改为文件名+是否保存提示
+changelog=0.5.74: 空白页支持双击新建页签，并加双击/＋按钮提示

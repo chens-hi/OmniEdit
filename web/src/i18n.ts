@@ -145,6 +145,8 @@ const dict = {
   // 欢迎页
   welcomeTitle: { zh: 'OmniEdit', en: 'OmniEdit' },
   welcomeSub: { zh: '飞牛原生 · 全格式文件编辑器', en: 'Native all-format file editor for fnOS' },
+  placeholderDblClick: { zh: '双击空白处新建页签', en: 'Double-click to open a new tab' },
+  placeholderOrPlus: { zh: '或点左上角「＋」', en: 'or click "＋" at top-left' },
 
   // 外部变更
   fileChangedReload: { zh: '重新加载', en: 'Reload' },

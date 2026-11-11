@@ -197,8 +197,10 @@ body,
   align-items: center;
   justify-content: center;
   color: #666;
-  pointer-events: none;
+  /* 需接收双击以新建页签：占位层只在无活动页签时显示，不会挡住编辑器 */
+  pointer-events: auto;
   text-align: center;
+  cursor: default;
 }
 
 .placeholder-title {
@@ -214,9 +216,14 @@ body,
 }
 
 .placeholder-hint {
-  margin-top: 18px;
+  margin-top: 22px;
+  font-size: 13px;
+  color: #666;
+}
+.placeholder-hint-sub {
+  margin-left: 6px;
   font-size: 12px;
-  color: #444;
+  color: #888;
 }
 
 /* ---------- 预览 ---------- */

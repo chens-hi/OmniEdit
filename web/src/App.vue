@@ -44,7 +44,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.73';
+const appVersion = '0.5.74';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -435,9 +435,14 @@ onMounted(async () => {
         <div class="editor-area">
           <div class="editor-pane">
             <div id="editor-host" class="editor-host" />
-            <div v-if="!store.activeTab" class="placeholder">
+            <!-- 空白页：双击新建页签（pointer-events 仅开在占位层，双击热区=整块空白） -->
+            <div v-if="!store.activeTab" class="placeholder" @dblclick="store.newUntitled()">
               <div class="placeholder-title">{{ t('welcomeTitle') }}</div>
               <div class="placeholder-sub">{{ t('welcomeSub') }}</div>
+              <div class="placeholder-hint">
+                {{ t('placeholderDblClick') }}
+                <span class="placeholder-hint-sub">{{ t('placeholderOrPlus') }}</span>
+              </div>
             </div>
           </div>
           <aside v-if="showPreview && store.activeTab?.isMarkdown" class="preview-pane">
