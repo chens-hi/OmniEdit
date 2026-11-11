@@ -558,15 +558,15 @@ void lang;
 @keyframes mFadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 /* 抽屉面板：左侧滑入，宽度不超过屏宽 85%。
-   外框用 --toolbar-bg（与分组头同色，顶部留白不再露白块），
-   展开的菜单内容区用 --bg（白/深内容面板，见 .m-group-body）。 */
+   层级（自适应主题）：抽屉底 --bg → 分组头 --toolbar-bg 色带（左侧 accent 竖条）
+   → 展开内容 --bg 缩进面板。三段靠色带与缩进区分，不糊在一起。 */
 .m-drawer {
   position: fixed;
   top: 0;
   bottom: 0;
   left: 0;
   width: min(320px, 85vw);
-  background: var(--toolbar-bg);
+  background: var(--bg);
   border-right: 1px solid var(--border);
   z-index: 101;
   display: flex;
@@ -587,7 +587,7 @@ void lang;
 }
 .m-drawer-body::-webkit-scrollbar { display: none; }
 
-/* 手风琴分组头 */
+/* 手风琴分组头：--toolbar-bg 色带 + 左侧 accent 竖条，作为醒目分区头 */
 .m-group-head {
   display: flex;
   align-items: center;
@@ -596,6 +596,8 @@ void lang;
   min-height: 48px;
   padding: 0 14px;
   border: none;
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
   background: var(--toolbar-bg);
   color: var(--fg);
   font-size: 14px;
@@ -605,8 +607,12 @@ void lang;
 }
 .m-group-head:hover { background: color-mix(in srgb, var(--toolbar-bg) 80%, var(--fg) 8%); }
 .m-group-arrow { color: var(--fg-muted); font-size: 12px; }
-/* 展开的菜单内容区：用 --bg（浅色=白、深色=深）面板，与灰色抽屉外框区分 */
-.m-group-body { padding: 4px 0; background: var(--bg); }
+/* 展开的菜单内容区：落在 --bg 主表面，左侧缩进体现从属于分组头 */
+.m-group-body {
+  padding: 6px 0 10px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
 
 /* 抽屉内菜单项：加大触摸目标（≥44px 高），覆盖桌面的小 padding */
 .m-drawer .m-item {

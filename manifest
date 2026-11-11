@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.5.61
+version=0.5.62
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.5.61: 窄屏抽屉菜单贴齐顶部（去掉顶部额外留白）
+changelog=0.5.62: 重设窄屏抽屉视觉层级——抽屉底 bg、分组头 toolbar 色带+accent 竖条、展开内容缩进面板，自适应主题不再混为一体
