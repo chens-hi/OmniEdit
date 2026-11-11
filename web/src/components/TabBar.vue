@@ -132,8 +132,7 @@ function onTabPointerDown(e: PointerEvent, id: number) {
 function onLongPressArmed() {
   pressTimer = null;
   if (pressPointerId === null) return;
-  armed = true; // 已抓起，移动即拖动
-  haptic(10);   // 轻震：提示已进入可拖状态
+  armed = true; // 已抓起，移动即拖动（此处不震动，震动留给真正拖动启动与交换完成）
 }
 
 /** 触觉反馈（触摸设备震动；桌面无振动器时为 no-op）。 */
@@ -158,7 +157,7 @@ function onPressMove(e: PointerEvent) {
     if (Math.hypot(dx, dy) < DRAG_START_PX) return;
     pointerDragging = true;
     draggingId.value = pressTabId; // 拖动高亮（桌面/触摸共用样式）
-    if (!pressIsMouse) haptic(18); // 触摸：拖动真正启动时再震一下，确认已抓起
+    if (!pressIsMouse) haptic(18); // 触摸：真正触发拖动，震动确认已抓起
   }
   if (!pressIsMouse) e.preventDefault(); // 触摸拖动时阻断原生滚动
   updateDragAt(e.clientX, e.clientY);
@@ -178,11 +177,15 @@ function onPressCancel(e: PointerEvent) {
 /** 手势结束（抬指/取消）：拖动则落位排序，否则无操作（长按只服务拖动）。 */
 function finishPress() {
   const wasDragging = pointerDragging;
+  const isMouse = pressIsMouse;
   const id = pressTabId;
   if (wasDragging) {
     suppressClickUntil = performance.now() + 180; // 落位后吞掉补发的 click，避免误切活动页签
     const over = dragOver.value;
-    if (id != null && over && over.id !== id) moveTab(id, over.id, over.side);
+    if (id != null && over && over.id !== id) {
+      moveTab(id, over.id, over.side);
+      if (!isMouse) haptic(24); // 触摸：交换完成反馈
+    }
   }
   abortDrag();
   cancelPress();
@@ -417,7 +420,7 @@ watch(() => [store.activeId, store.tabs.length], async () => {
   max-width: 200px;
   padding: 6px 8px;
   border-right: 1px solid var(--border);
-  cursor: grab; /* 可拖拽暗示：悬停为张开手 */
+  cursor: pointer; /* 平时正常指针；握手光标只在拖动中显示（.tabs.is-dragging） */
   white-space: nowrap;
   font-size: 12px;
   color: var(--fg-muted);
