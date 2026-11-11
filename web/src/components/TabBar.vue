@@ -33,32 +33,37 @@ function onTabContextmenu(e: MouseEvent, id: number) {
 
 // 触摸设备的长按菜单与拖动排序统一由下方「触摸手势」块处理（Pointer 手势）。
 
-/** 右键菜单项：保存 / 另存为 / 关闭 / 关闭右侧所有。 */
+/** 右键菜单项：关闭 ▸（当前/右侧/左侧/其他/所有）。保存/另存为已回到文件菜单。 */
 const ctxItems = computed(() => {
   const id = ctxMenu.value?.tabId;
-  const tab = id != null ? store.tabById(id) : null;
-  const idx = tab ? store.tabs.findIndex(tb => tb.id === tab.id) : -1;
+  const idx = id != null ? store.tabs.findIndex(tb => tb.id === id) : -1;
+  const idsOf = (list: { id: number }[]) => list.map(t => t.id);
   return [
     {
-      // 保存：从文件菜单移至此处。仅已落盘且脏的页签可保存（草稿走另存为）。
-      label: t('menuSave'),
-      disabled: !(tab?.path && tab?.dirty),
-      action: () => { void store.saveActive(); },
-    },
-    {
-      // 另存为：从文件菜单移至此处。右键已激活该页签，SaveAsDialog 按 activeTab 处理。
-      label: t('menuSaveAs'),
-      action: () => { store.saveAsVisible = true; },
-    },
-    {
       label: t('close'),
-      danger: !!tab?.dirty,
-      action: () => { if (id != null) void store.closeTab(id); },
-    },
-    {
-      label: t('closeRightAll'),
-      disabled: idx < 0 || idx >= store.tabs.length - 1,
-      action: () => { if (id != null) void store.closeTabsToRight(id); },
+      children: [
+        { label: t('closeCurrent'), action: () => { if (id != null) void store.requestCloseMany([id]); } },
+        {
+          label: t('closeRight'),
+          disabled: idx < 0 || idx >= store.tabs.length - 1,
+          action: () => { if (idx >= 0) void store.requestCloseMany(idsOf(store.tabs.slice(idx + 1))); },
+        },
+        {
+          label: t('closeLeft'),
+          disabled: idx <= 0,
+          action: () => { if (idx >= 0) void store.requestCloseMany(idsOf(store.tabs.slice(0, idx))); },
+        },
+        {
+          label: t('closeOthers'),
+          disabled: store.tabs.length <= 1,
+          action: () => { if (id != null) void store.requestCloseMany(idsOf(store.tabs.filter(t => t.id !== id))); },
+        },
+        {
+          label: t('closeAllTabs'),
+          disabled: store.tabs.length === 0,
+          action: () => { void store.requestCloseMany(idsOf(store.tabs)); },
+        },
+      ],
     },
   ];
 });

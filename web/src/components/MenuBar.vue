@@ -56,6 +56,20 @@ function doExit() {
   }
 }
 
+// 文件菜单的保存/另存为/关闭：均作用于当前活动标签（触摸端唯一保存入口）。
+function doSave() {
+  openMenu.value = null;
+  void store.saveActive();
+}
+function doSaveAs() {
+  openMenu.value = null;
+  store.saveAsVisible = true;
+}
+function doClose() {
+  openMenu.value = null;
+  if (store.activeTab) void store.closeTab(store.activeTab.id);
+}
+
 /** 还原初始状态：二次确认后清空设置/标签并写回后端（破坏性，不可撤销）。 */
 async function doReset() {
   openMenu.value = null;
@@ -67,12 +81,18 @@ async function doReset() {
 
 const menus = computed<Menu[]>((): Menu[] => {
   const tab = store.activeTab;
-  // 保存/另存为均已移至页签右键菜单；文件菜单只保留 新建/打开/退出
+  const canSave = !!tab && !!tab.path && tab.dirty;
+  const canClose = !!tab;
   const fileItems: MenuItem[] = [
     { type: 'item', label: t('menuNew'), action: () => { openMenu.value = null; store.newUntitled(); } },
     { type: 'item', label: t('menuOpen'), action: () => { openMenu.value = null; void store.openViaPicker(); } },
+    { type: 'sep' },
+    { type: 'item', label: t('menuSave'), shortcut: 'Ctrl+S', disabled: () => !canSave, action: doSave },
+    { type: 'item', label: t('menuSaveAs'), action: doSaveAs },
+    { type: 'item', label: t('close'), disabled: () => !canClose, action: doClose },
+    { type: 'sep' },
+    { type: 'item', label: t('menuExit'), action: doExit },
   ];
-  fileItems.push({ type: 'item', label: t('menuExit'), action: doExit });
 
   const canSearch = !!tab && !tab.loading;
 

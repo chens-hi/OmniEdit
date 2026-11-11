@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.5.64
+version=0.5.65
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.5.64: 「保存」从文件菜单移至页签右键菜单；「打开…」改为「打开」
+changelog=0.5.65: 重构关闭流程——页签右键「关闭」子菜单（当前/右侧/左侧/其他/所有）+ 批量关闭一次列出未保存（保存全部/不保存/取消）；文件菜单恢复保存/另存为/关闭

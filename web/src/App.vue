@@ -35,6 +35,7 @@ import TabBar from './components/TabBar.vue';
 import MarkdownPreview from './components/MarkdownPreview.vue';
 import SaveAsDialog from './components/SaveAsDialog.vue';
 import ConfirmDialog from './components/ConfirmDialog.vue';
+import BatchCloseModal from './components/BatchCloseModal.vue';
 import AppModal from './components/AppModal.vue';
 import AppToast from './components/AppToast.vue';
 
@@ -43,7 +44,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.64';
+const appVersion = '0.5.65';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -492,6 +493,9 @@ onMounted(async () => {
       :danger="store.confirmDialog.danger"
       @result="store.settleConfirm($event)"
     />
+
+    <!-- 批量关闭确认模态（store.batchClose 驱动；单/多脏标签关闭复用） -->
+    <BatchCloseModal v-if="store.batchClose.visible" />
 
     <AppModal v-if="showAbout" :title="'OmniEdit'" :width="360" @close="showAbout = false">
       <div>{{ t('welcomeSub') }}</div>

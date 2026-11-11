@@ -489,36 +489,86 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   /**
-   * 关闭标签。脏标签先经统一确认框（danger），用户取消视为「未关闭」返回 false——
-   * 供批量关闭（关闭右侧所有）据此中止，避免半途取消后继续误关。
+   * 批量关闭确认状态：目标里未保存的页签分两组——
+   *   toSave：有路径的脏文件（可「保存全部并关闭」）
+   *   toDiscard：非空草稿（将丢弃，明示后果）
+   * 空草稿不进列表（无损失，不打扰）。
    */
-  async function closeTab(id: number): Promise<boolean> {
-    const tab = tabById(id);
-    if (!tab) return false;
-    if (tab.dirty && !(await confirm(`${tab.name} ${t('confirmCloseDirty')}`, { danger: true }))) return false;
+  const batchClose = ref<{
+    visible: boolean;
+    toSave: { id: number; name: string }[];
+    toDiscard: { id: number; name: string }[];
+    ids: number[];
+  }>({ visible: false, toSave: [], toDiscard: [], ids: [] });
+  let batchResolver: ((v: 'saved' | 'closed' | 'cancel') => void) | null = null;
+
+  /** 移除单个标签（不含确认）：splice + 活动页调整 + unwatch + 持久化会话。 */
+  function removeTabRaw(id: number) {
     const idx = tabs.value.findIndex(tb => tb.id === id);
+    if (idx < 0) return;
+    const tab = tabs.value[idx];
     tabs.value.splice(idx, 1);
     if (activeId.value === id) {
       activeId.value = tabs.value[Math.min(idx, tabs.value.length - 1)]?.id ?? 0;
     }
     // 草稿从未落盘无需 unwatch；已打开文件通知后端释放监控。失败忽略。
     if (tab.path) void unwatchFile(tab.path).catch(() => {});
-    // 标签集变化 → 持久化会话。
     persistSession();
-    return true;
   }
 
-  /** 关闭右侧所有标签（页签右键菜单）：从最右往左逐个关闭；用户取消任一脏标签确认即中止。 */
-  async function closeTabsToRight(id: number) {
-    const idx = tabs.value.findIndex(tb => tb.id === id);
-    if (idx < 0) return;
-    // 逆序关闭：splice 按 id 删除，索引不受影响，但逆序语义最稳。
-    for (let i = tabs.value.length - 1; i > idx; i--) {
-      const tab = tabs.value[i];
-      if (!tab) break;
-      const ok = await closeTab(tab.id);
-      if (!ok) break;
+  /**
+   * 批量关闭入口：收集目标里未保存的页签，一次列出（不逐个弹）。
+   *   - 有路径的脏文件 → toSave（「保存全部并关闭」覆盖）
+   *   - 非空草稿 → toDiscard（「不保存关闭」将丢弃，明示后果）
+   *   - 空草稿 → 直接忽略
+   * 无未保存项则直接关闭全部；否则弹批量确认模态。
+   * 返回 'saved'（保存后关闭）/ 'closed'（未涉及保存直接关）/ 'cancel'（用户取消）。
+   */
+  function requestCloseMany(ids: number[]): Promise<'saved' | 'closed' | 'cancel'> {
+    const toSave: { id: number; name: string }[] = [];
+    const toDiscard: { id: number; name: string }[] = [];
+    for (const id of ids) {
+      const t = tabById(id);
+      if (!t || !t.dirty) continue;
+      if (t.path) toSave.push({ id, name: t.name });
+      else if (t.content.trim() !== '') toDiscard.push({ id, name: t.name });
+      // 空草稿：无损失，直接忽略不进列表
     }
+    if (toSave.length === 0 && toDiscard.length === 0) {
+      ids.forEach(removeTabRaw);
+      return Promise.resolve('closed');
+    }
+    batchClose.value = { visible: true, toSave, toDiscard, ids };
+    return new Promise(resolve => { batchResolver = resolve; });
+  }
+
+  /** 批量关闭模态回调：save=先存 toSave 再全关；discard=直接全关；cancel=不动。 */
+  async function settleBatchClose(choice: 'save' | 'discard' | 'cancel') {
+    const { ids, toSave } = batchClose.value;
+    batchClose.value.visible = false;
+    const resolve = batchResolver;
+    batchResolver = null;
+    if (!resolve) return;
+    if (choice === 'cancel') { resolve('cancel'); return; }
+    if (choice === 'save') {
+      // 逐个保存有路径的脏文件；任一失败（写盘错误）即中止，不动手关。
+      for (const t of toSave) {
+        const ok = await saveTab(t.id);
+        if (!ok) { resolve('cancel'); return; }
+      }
+    }
+    ids.forEach(removeTabRaw);
+    resolve(choice === 'save' ? 'saved' : 'closed');
+  }
+
+  /**
+   * 关闭单个标签（页签 × 按钮 / 文件菜单关闭 / 右键当前页签）。
+   * 脏页签走批量关闭模态（一次询问是否保存），复用与批量一致的处理。
+   * 返回是否已关闭（取消=false）。
+   */
+  async function closeTab(id: number): Promise<boolean> {
+    const r = await requestCloseMany([id]);
+    return r !== 'cancel';
   }
 
   /**
@@ -703,6 +753,7 @@ export const useEditorStore = defineStore('editor', () => {
     tabs, activeId, activeTab, activePath, error, status,
     saveAsVisible, lastSaveDir,
     confirmDialog, confirm, settleConfirm,
+    batchClose, requestCloseMany, settleBatchClose,
     toasts, toast, dismissToast,
     indentMode, indentWidth, fontSize, fontFamily, themeMode, lineWrapping, showLineNumbers,
     showSpaces, showTabs, showLineBreaks,
@@ -710,7 +761,7 @@ export const useEditorStore = defineStore('editor', () => {
     setShowSpaces, setShowTabs, setShowLineBreaks,
     builtinFonts: BUILTIN_FONTS,
     openViaPicker,
-    openFile, saveActive, saveTab, closeTab, closeTabsToRight, markDirty, newUntitled, setError,
+    openFile, saveActive, saveTab, closeTab, markDirty, newUntitled, setError,
     doSaveAs, closeSaveAs,
     reloadFile, tabById,
     initPrefs, persistSession, prefsBackendOk, resetToDefaults,
