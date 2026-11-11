@@ -133,7 +133,12 @@ function onLongPressArmed() {
   pressTimer = null;
   if (pressPointerId === null) return;
   armed = true; // 已抓起，移动即拖动
-  navigator.vibrate?.(10);
+  haptic(10);   // 轻震：提示已进入可拖状态
+}
+
+/** 触觉反馈（触摸设备震动；桌面无振动器时为 no-op）。 */
+function haptic(ms: number) {
+  navigator.vibrate?.(ms);
 }
 
 function onTouchMoveBlock(e: TouchEvent) {
@@ -153,6 +158,7 @@ function onPressMove(e: PointerEvent) {
     if (Math.hypot(dx, dy) < DRAG_START_PX) return;
     pointerDragging = true;
     draggingId.value = pressTabId; // 拖动高亮（桌面/触摸共用样式）
+    if (!pressIsMouse) haptic(18); // 触摸：拖动真正启动时再震一下，确认已抓起
   }
   if (!pressIsMouse) e.preventDefault(); // 触摸拖动时阻断原生滚动
   updateDragAt(e.clientX, e.clientY);
@@ -323,6 +329,7 @@ watch(() => [store.activeId, store.tabs.length], async () => {
       <div
         ref="tabsEl"
         class="tabs"
+        :class="{ 'is-dragging': draggingId !== null }"
         @scroll="updateFade"
       >
         <div
@@ -410,7 +417,7 @@ watch(() => [store.activeId, store.tabs.length], async () => {
   max-width: 200px;
   padding: 6px 8px;
   border-right: 1px solid var(--border);
-  cursor: pointer;
+  cursor: grab; /* 可拖拽暗示：悬停为张开手 */
   white-space: nowrap;
   font-size: 12px;
   color: var(--fg-muted);
@@ -424,6 +431,10 @@ watch(() => [store.activeId, store.tabs.length], async () => {
    pointer-events:none 让触摸拖动时 elementFromPoint 能穿透本体命中下层页签
    （HTML5 DnD 同样受益：拖动源不拦截 dragover）。 */
 .tab.dragging { opacity: 0.45; pointer-events: none; }
+/* 拖动中：整条页签栏与各页签显示握紧手光标（源页签 pointer-events:none，
+   光标由其下目标页签或容器提供）。触摸端无光标，此规则仅影响键鼠。 */
+.tabs.is-dragging,
+.tabs.is-dragging .tab { cursor: grabbing; }
 .tab.drag-before::before,
 .tab.drag-after::after {
   content: '';
