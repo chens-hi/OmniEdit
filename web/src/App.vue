@@ -9,7 +9,6 @@ import type { Extension } from '@codemirror/state';
 // 手动补齐 basicSetup 有、minimalSetup 无的能力（除 lineNumbers——交给 compartment）。
 import {
   indentUnit, indentOnInput, foldGutter, foldKeymap, bracketMatching,
-  syntaxHighlighting, defaultHighlightStyle,
 } from '@codemirror/language';
 import {
   keymap, lineNumbers, drawSelection, dropCursor, rectangularSelection,
@@ -26,6 +25,7 @@ import { languageExtensionFor } from './language';
 import { useEditorStore } from './store';
 import { pathFromLocation } from './api';
 import { initTheme, theme } from './theme';
+import { syntaxHighlightFor } from './syntaxTheme';
 import { initLang, t, lang } from './i18n';
 import { startFileWatch } from './fileWatch';
 import { createSearchPanel, openSearch } from './searchPanel';
@@ -44,12 +44,14 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.77';
+const appVersion = '0.5.78';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
 // CodeMirror 主题热切换单元格：宿主切深/浅色时重配。
 const themeCompartment = new Compartment();
+// 语法高亮配色单元格：随主题（深/浅）切换 token 配色，替换原 defaultHighlightStyle。
+const syntaxCompartment = new Compartment();
 // CodeMirror 可编辑性单元格：只读预览（超大文件）时禁用编辑。
 const editableCompartment = new Compartment();
 // 菜单栏驱动的设置单元格。
@@ -107,9 +109,28 @@ const docSync = Annotation.define<boolean>();
 let view: EditorView | null = null;
 let mountedId = 0;
 
-/** 当前主题对应的 CodeMirror 主题扩展。暗色用 oneDark，浅色走 CSS 变量。 */
+/**
+ * 浅色 CodeMirror 编辑器主题：补齐前景/选区/光标/当前行/行号槽取色。
+ * 暗色沿用 oneDark（已含这些），浅色此前为空（仅 CSS 底色），这里显式定义保证 token 落在合适底色。
+ */
+function lightEditorTheme() {
+  return EditorView.theme({
+    '&': { color: '#24292e', backgroundColor: '#ffffff' },
+    '.cm-content': { caretColor: '#0969da' },
+    '.cm-cursor, .cm-dropCursor': { borderLeftColor: '#0969da' },
+    '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
+      backgroundColor: '#b6d7ff',
+    },
+    '.cm-activeLine': { backgroundColor: 'rgba(9, 105, 218, 0.06)' },
+    '.cm-gutters': { backgroundColor: '#f6f8fa', color: '#6e7781', border: 'none' },
+    '.cm-activeLineGutter': { backgroundColor: 'rgba(9, 105, 218, 0.10)', color: '#24292e' },
+    '.cm-selectionMatch': { backgroundColor: '#b6d7ff88' },
+  });
+}
+
+/** 当前主题对应的 CodeMirror 主题扩展。暗色用 oneDark，浅色用上面的浅色主题。 */
 function cmThemeFor(t: 'dark' | 'light') {
-  return t === 'dark' ? [oneDark] : [];
+  return t === 'dark' ? [oneDark] : [lightEditorTheme()];
 }
 
 /** 从编辑器 state 计算光标行列（1-based，状态栏展示）。 */
@@ -152,7 +173,7 @@ function mountEditor(tab: { id: number; content: string; path: string; name: str
       dropCursor(),
       EditorState.allowMultipleSelections.of(true),
       indentOnInput(),
-      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      syntaxCompartment.of(syntaxHighlightFor(theme.value)),
       bracketMatching(),
       rectangularSelection(),
       crosshairCursor(),
@@ -184,10 +205,15 @@ function mountEditor(tab: { id: number; content: string; path: string; name: str
   syncCursor(view.state);
 }
 
-// 宿主主题变化时热切换 CodeMirror 配色。
+// 宿主主题变化时热切换 CodeMirror 配色（编辑器外壳 + 语法高亮 token 配色）。
 watch(theme, (t) => {
   if (view) {
-    view.dispatch({ effects: themeCompartment.reconfigure(cmThemeFor(t)) });
+    view.dispatch({
+      effects: [
+        themeCompartment.reconfigure(cmThemeFor(t)),
+        syntaxCompartment.reconfigure(syntaxHighlightFor(t)),
+      ],
+    });
   }
 });
 
