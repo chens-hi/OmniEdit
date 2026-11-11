@@ -45,7 +45,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.82';
+const appVersion = '0.5.83';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -342,6 +342,14 @@ function onMenuFind(mode: 'find' | 'replace') {
   if (view) openSearch(view, mode);
 }
 
+/** 编辑菜单 剪贴板/全选：分发到对应操作（作用于活动页签的编辑器）。 */
+function onMenuClipboard(op: 'copy' | 'cut' | 'paste' | 'selectall') {
+  if (op === 'copy') ctxCopy();
+  else if (op === 'cut') ctxCut();
+  else if (op === 'paste') void ctxPaste();
+  else if (op === 'selectall') ctxSelectAll();
+}
+
 /**
  * Tab / Shift+Tab 命令：
  *   - 有选区 → 整行缩进 / 反缩进（indentMore / indentLess）
@@ -427,9 +435,11 @@ watch(() => [store.showSpaces, store.showTabs, store.showLineBreaks], () => {
 // ---- 编辑区自定义右键菜单：复制/剪切/粘贴/全选（基础版，后续可扩展）----
 // 复用页签右键的 ContextMenu 组件；剪贴板走 navigator.clipboard API（不依赖
 // 浏览器原生菜单的焦点，菜单点击后仍可操作已挂载的 view）。
-const editorCtx = ref<{ x: number; y: number } | null>(null);
+// 关键：view.state.selection 非响应式，computed 不追踪——故在 contextmenu 那刻
+// 把「有无选区」快照进 editorCtx，菜单项 disabled 从快照读，避免读到过期状态。
+const editorCtx = ref<{ x: number; y: number; hasSel: boolean } | null>(null);
 
-/** 当前主选区（无则 null）。菜单打开期间选区稳定，可安全读取。 */
+/** 当前主选区（无则 null）。 */
 function mainSel() {
   if (!view) return null;
   const s = view.state.selection.main;
@@ -473,12 +483,12 @@ function onEditorContextmenu(e: MouseEvent) {
   // 空白页无编辑内容，走浏览器默认菜单
   if (!store.activeTab) return;
   e.preventDefault();
-  editorCtx.value = { x: e.clientX, y: e.clientY };
+  editorCtx.value = { x: e.clientX, y: e.clientY, hasSel: !!mainSel() };
 }
 
 const editorCtxItems = computed(() => {
-  const hasSel = !!mainSel();
-  const hasDoc = !!view && view.state.doc.length > 0;
+  const hasSel = editorCtx.value?.hasSel ?? false;
+  const hasDoc = !!store.activeTab;
   return [
     { label: t('ctxCopy'), shortcut: 'Ctrl+C', disabled: !hasSel, action: ctxCopy },
     { label: t('ctxCut'), shortcut: 'Ctrl+X', disabled: !hasSel, action: ctxCut },
@@ -512,6 +522,7 @@ onMounted(async () => {
     <MenuBar
       @find="onMenuFind"
       @about="showAbout = true"
+      @clipboard="onMenuClipboard"
     />
 
     <div class="body">

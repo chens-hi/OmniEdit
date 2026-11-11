@@ -16,6 +16,7 @@ const store = useEditorStore();
 const emit = defineEmits<{
   (e: 'find', mode: 'find' | 'replace'): void;
   (e: 'about'): void;
+  (e: 'clipboard', op: 'copy' | 'cut' | 'paste' | 'selectall'): void;
 }>();
 
 /** 菜单项定义 */
@@ -47,6 +48,12 @@ interface Menu {
 function doFind(mode: 'find' | 'replace') {
   openMenu.value = null;
   emit('find', mode);
+}
+
+// 编辑菜单的 剪贴板/全选：操作编辑器 view（在 App.vue），emit 上抛处理。
+function doClipboard(op: 'copy' | 'cut' | 'paste' | 'selectall') {
+  openMenu.value = null;
+  emit('clipboard', op);
 }
 
 function doExit() {
@@ -108,6 +115,11 @@ const menus = computed<Menu[]>((): Menu[] => {
       items: [
         { type: 'item', label: t('menuFind'), shortcut: 'Ctrl+F', disabled: () => !canSearch, action: () => doFind('find') },
         { type: 'item', label: t('menuReplace'), shortcut: 'Ctrl+H', disabled: () => !canSearch, action: () => doFind('replace') },
+        { type: 'sep' },
+        { type: 'item', label: t('ctxCopy'), shortcut: 'Ctrl+C', disabled: () => !tab, action: () => doClipboard('copy') },
+        { type: 'item', label: t('ctxCut'), shortcut: 'Ctrl+X', disabled: () => !tab, action: () => doClipboard('cut') },
+        { type: 'item', label: t('ctxPaste'), shortcut: 'Ctrl+V', disabled: () => !tab, action: () => doClipboard('paste') },
+        { type: 'item', label: t('ctxSelectAll'), shortcut: 'Ctrl+A', disabled: () => !tab, action: () => doClipboard('selectall') },
       ],
     },
     {
