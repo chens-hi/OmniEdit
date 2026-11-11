@@ -49,12 +49,6 @@ function doFind(mode: 'find' | 'replace') {
   emit('find', mode);
 }
 
-function doSaveAs() {
-  openMenu.value = null;
-  // 另存为：打开对话框（mode 由 App 侧按 activeTab.path 决定）
-  store.saveAsVisible = true;
-}
-
 function doExit() {
   openMenu.value = null;
   if (!sdk.isStandaloneWeb) {
@@ -74,16 +68,10 @@ async function doReset() {
 const saveItem = computed<MenuItem | null>(() => {
   const tab = store.activeTab;
   if (!tab) return null;
-  if (!tab.path) {
-    // 草稿：只显示「保存为…」
-    return { type: 'item', label: t('menuSaveAs'), action: doSaveAs };
-  }
+  // 草稿：另存为已移至页签右键菜单，文件菜单不再提供保存入口
+  if (!tab.path) return null;
   const canSave = tab.dirty;
-  const items: MenuItem[] = [
-    { type: 'item', label: t('menuSave'), shortcut: 'Ctrl+S', disabled: () => !canSave, action: () => { openMenu.value = null; store.saveActive(); } },
-    { type: 'item', label: t('menuSaveAs'), action: doSaveAs },
-  ];
-  return items[0];
+  return { type: 'item', label: t('menuSave'), shortcut: 'Ctrl+S', disabled: () => !canSave, action: () => { openMenu.value = null; store.saveActive(); } };
 });
 
 const menus = computed<Menu[]>((): Menu[] => {
@@ -91,16 +79,10 @@ const menus = computed<Menu[]>((): Menu[] => {
   const fileItems: MenuItem[] = [
     { type: 'item', label: t('menuNew'), action: () => { openMenu.value = null; store.newUntitled(); } },
     { type: 'item', label: t('menuOpen'), action: () => { openMenu.value = null; void store.openViaPicker(); } },
-    { type: 'sep' },
   ];
+  // 另存为已移至页签右键菜单；文件菜单不再放分割线
   if (saveItem.value) fileItems.push(saveItem.value);
-  if (tab && tab.path) {
-    fileItems.push({ type: 'item', label: t('menuSaveAs'), action: doSaveAs });
-  }
-  fileItems.push(
-    { type: 'sep' },
-    { type: 'item', label: t('menuExit'), action: doExit },
-  );
+  fileItems.push({ type: 'item', label: t('menuExit'), action: doExit });
 
   const canSearch = !!tab && !tab.loading;
 

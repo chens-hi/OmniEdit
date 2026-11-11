@@ -33,12 +33,17 @@ function onTabContextmenu(e: MouseEvent, id: number) {
 
 // 触摸设备的长按菜单与拖动排序统一由下方「触摸手势」块处理（Pointer 手势）。
 
-/** 右键菜单项：关闭 / 关闭右侧所有。 */
+/** 右键菜单项：另存为 / 关闭 / 关闭右侧所有。 */
 const ctxItems = computed(() => {
   const id = ctxMenu.value?.tabId;
   const tab = id != null ? store.tabById(id) : null;
   const idx = tab ? store.tabs.findIndex(tb => tb.id === tab.id) : -1;
   return [
+    {
+      // 另存为：从文件菜单移至此处。右键已激活该页签，SaveAsDialog 按 activeTab 处理。
+      label: t('menuSaveAs'),
+      action: () => { store.saveAsVisible = true; },
+    },
     {
       label: t('close'),
       danger: !!tab?.dirty,
