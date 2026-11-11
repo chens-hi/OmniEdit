@@ -103,4 +103,19 @@ onBeforeUnmount(() => {
 }
 .ctx-item.danger { color: var(--error); }
 .ctx-item.disabled { opacity: 0.4; cursor: default; }
+
+/* 窄屏 / 触摸设备：放大触摸目标（≥44px）、加宽容器并钳到屏内。
+   触摸无 hover，保留 hover 规则对键鼠无害；触摸端点击即执行。 */
+@media (max-width: 768px), (pointer: coarse) {
+  .ctx-menu {
+    min-width: 200px;
+    max-width: calc(100vw - 16px);
+    padding: 6px;
+  }
+  .ctx-item {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+}
 </style>

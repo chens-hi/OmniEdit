@@ -31,6 +31,64 @@ function onTabContextmenu(e: MouseEvent, id: number) {
   ctxMenu.value = { x: e.clientX, y: e.clientY, tabId: id };
 }
 
+// ---- 长按触发上下文菜单（触摸设备无右键，长按为移动端标准交互）----
+// 仅触摸/笔生效（鼠标走 contextmenu，桌面零影响）。长按期间用移动阈值区分
+// 横滑：一旦判定为滑动（含原生滚动触发的 pointercancel）即取消，不误弹菜单。
+const LONG_PRESS_MS = 480;
+const MOVE_THRESHOLD = 10; // px，超过即视为滑动
+let pressTimer: number | null = null;
+let pressPointerId: number | null = null;
+let pressTabId: number | null = null;
+let pressStart = { x: 0, y: 0 };
+
+function clearPress() {
+  if (pressTimer !== null) { clearTimeout(pressTimer); pressTimer = null; }
+  pressPointerId = null;
+  pressTabId = null;
+  window.removeEventListener('pointermove', onPressMove);
+  window.removeEventListener('pointerup', onPressUp);
+  window.removeEventListener('pointercancel', onPressCancel);
+}
+
+function onTabPointerDown(e: PointerEvent, id: number) {
+  if (e.pointerType === 'mouse') return; // 鼠标：走右键
+  clearPress();
+  pressPointerId = e.pointerId;
+  pressTabId = id;
+  pressStart = { x: e.clientX, y: e.clientY };
+  window.addEventListener('pointermove', onPressMove);
+  window.addEventListener('pointerup', onPressUp);
+  window.addEventListener('pointercancel', onPressCancel);
+  pressTimer = window.setTimeout(() => fireLongPress(e.clientX, e.clientY), LONG_PRESS_MS);
+}
+
+function onPressMove(e: PointerEvent) {
+  if (e.pointerId !== pressPointerId) return;
+  const dx = e.clientX - pressStart.x;
+  const dy = e.clientY - pressStart.y;
+  if (Math.hypot(dx, dy) > MOVE_THRESHOLD) clearPress(); // 滑动，取消长按
+}
+
+function onPressUp(e: PointerEvent) {
+  if (e.pointerId !== pressPointerId) return;
+  clearPress();
+}
+
+function onPressCancel(e: PointerEvent) {
+  if (e.pointerId !== pressPointerId) return;
+  clearPress();
+}
+
+/** 长按到点：激活该标签 + 在按点弹菜单 + 轻触觉反馈（不支持则静默）。 */
+function fireLongPress(x: number, y: number) {
+  const id = pressTabId;
+  clearPress();
+  if (id == null) return;
+  navigator.vibrate?.(10);
+  store.activeId = id;
+  ctxMenu.value = { x, y, tabId: id };
+}
+
 /** 右键菜单项：关闭 / 关闭右侧所有。 */
 const ctxItems = computed(() => {
   const id = ctxMenu.value?.tabId;
@@ -172,6 +230,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   ro?.disconnect();
   stopSmooth();
+  clearPress();
 });
 
 // 活动标签变化 / 开关标签后：把活动页滚入可视区 + 刷新边缘渐变。
@@ -220,6 +279,7 @@ watch(() => [store.activeId, store.tabs.length], async () => {
           :title="tab.path || tab.name"
           draggable="true"
           @click="store.activeId = tab.id"
+          @pointerdown="onTabPointerDown($event, tab.id)"
           @contextmenu.prevent="onTabContextmenu($event, tab.id)"
           @dragstart="onDragStart($event, tab.id)"
           @dragover="onDragOver($event, tab.id)"
@@ -300,6 +360,10 @@ watch(() => [store.activeId, store.tabs.length], async () => {
   font-size: 12px;
   color: var(--fg-muted);
   overflow: hidden;
+  /* 触摸长按呼出菜单：禁文本选择与 iOS 原生长按呼出，避免与自定义菜单打架 */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 /* 拖拽：本体半透明，落点侧亮 accent 指示线（左半区=线在左缘=插其前，反之在后）。 */
 .tab.dragging { opacity: 0.45; }
