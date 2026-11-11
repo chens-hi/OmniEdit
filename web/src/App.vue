@@ -44,7 +44,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.75';
+const appVersion = '0.5.76';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -406,19 +406,14 @@ onMounted(async () => {
   startFileWatch();
   // 拉取后端偏好（菜单设置/上次保存目录）并恢复上次会话的标签。
   // 失败不阻塞：各项回落 localStorage 缓存/默认值。
-  const restored = await store.initPrefs();
+  await store.initPrefs();
   const p = pathFromLocation();
   if (p) {
     // URL ?path= 优先（文件管理器右键打开）：直接打开该文件，会话其余标签仍在。
     await store.openFile(p);
-  } else if (restored.hasSession) {
-    // 无 path 且有会话 → 已恢复标签，定位到上次活动标签即可（initPrefs 已设）。
-    // 若会话标签全部打开失败（文件被删等），兜底新建草稿，避免空白无标签。
-    if (!store.tabs.length) store.newUntitled();
-  } else {
-    // 记事本形态：桌面图标打开 = 空白的「无标题」编辑窗口。
-    store.newUntitled();
   }
+  // 无 path：显示恢复的最近会话；无最近打开文件则直接显示空白页
+  // （不自动新建草稿），由用户双击空白处或点「＋」新建。
 });
 </script>
 
