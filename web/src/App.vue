@@ -457,14 +457,17 @@ onMounted(async () => {
           :class="{ badge: store.activeTab.encoding === 'gb18030' }"
           :title="store.activeTab.encoding === 'gb18030' ? t('encodingBadge') : 'Encoding'"
         >{{ encodingLabel }}</span>
-        <span class="sbsep" />
-        <span class="sbi" title="Line ending">{{ lineEndingLabel }}</span>
+        <span class="sbsep sb-opt" />
+        <span
+          class="sbi sb-opt"
+          title="Line ending"
+        >{{ lineEndingLabel }}</span>
         <span class="sbsep" />
         <span class="sbi" :title="cursorTitle">
           {{ lineCount }} {{ t('linesUnit') }}<span class="dim"> · {{ cursor.line }}:{{ cursor.col }}</span>
         </span>
-        <span class="sbsep" />
-        <span class="sbi">{{ fmtSize(fileSize) }}</span>
+        <span class="sbsep sb-opt" />
+        <span class="sbi sb-opt">{{ fmtSize(fileSize) }}</span>
       </div>
     </footer>
 

@@ -385,3 +385,30 @@ body,
 
 /* ---------- 模态内容（关于，配合 AppModal 插槽） ---------- */
 .dim { color: var(--fg-muted); margin-top: 4px; font-size: 12px; }
+
+/* ---------- 窄屏适配（移动设备 / 窄窗口） ---------- */
+/* 断点与 MenuBar 抽屉一致（768px）。触摸设备即便较宽也走抽屉，搜索/状态栏
+   的收紧只按宽度生效即可（平板横屏仍有足够空间）。 */
+@media (max-width: 768px) {
+  /* 搜索浮窗：桌面是右上角固定宽卡片（min-width 380px 会横向溢出），
+     窄屏改为顶部通栏（左右贴边 8px），宽度跟随容器。 */
+  .cm-panels.cm-panels-top {
+    top: 4px;
+    left: 8px;
+    right: 8px;
+  }
+  .omni-search {
+    min-width: 0;
+    width: 100%;
+    padding: 8px 10px;
+  }
+  /* 触摸目标略放大，便于点按 */
+  .omni-input { min-height: 34px; font-size: 14px; }
+  .omni-sbtn { min-height: 34px; font-size: 13px; }
+
+  /* 状态栏：收紧间距，隐藏次要信息（行尾 / 体积，标记 .sb-opt），
+     保留路径、缩进、编码、行列这些高频项。 */
+  .statusbar { gap: 8px; padding: 4px 8px; }
+  .sb-right { gap: 8px; }
+  .sb-opt { display: none; }
+}

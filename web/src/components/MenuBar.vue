@@ -211,10 +211,51 @@ const menus = computed<Menu[]>((): Menu[] => {
   ] as Menu[];
 });
 
+// ---- 窄屏检测（抽屉菜单触发）----
+// 用 pointer/宽度媒体查询而非 UA 嗅探：窄窗口或触摸设备都会走抽屉形态。
+// 桌面（宽屏 + 鼠标）保持原横排菜单，零影响。
+const narrowMq =
+  typeof window !== 'undefined' && window.matchMedia
+    ? window.matchMedia('(max-width: 768px), (pointer: coarse)')
+    : null;
+const isNarrow = ref(narrowMq?.matches ?? false);
+function onNarrowChange(e: MediaQueryListEvent) {
+  isNarrow.value = e.matches;
+  if (!e.matches) closeDrawer(); // 切回宽屏时收起抽屉
+}
+
 // ---- 展开状态与交互 ----
 
 const openMenu = ref<number | null>(null);
 const subOpen = ref<number | null>(null); // 当前展开的二级子菜单（父项 index）
+
+// ---- 抽屉（窄屏）状态 ----
+const drawerOpen = ref(false);
+const openGroup = ref<number | null>(null); // 抽屉内展开的菜单组
+const drawerSub = ref<number | null>(null); // 组内内联展开的二级子菜单
+
+function toggleGroup(idx: number) {
+  openGroup.value = openGroup.value === idx ? null : idx;
+  drawerSub.value = null;
+}
+function toggleDrawerSub(iidx: number) {
+  drawerSub.value = drawerSub.value === iidx ? null : iidx;
+}
+/**
+ * 抽屉内点击叶子项：复选/单选保留抽屉（可连续切换并看到勾选态刷新），
+ * 普通动作项执行后关闭抽屉（与桌面「动作后收起菜单」语义一致）。
+ */
+function onDrawerItemClick(item: MenuItem) {
+  if (item.disabled?.()) return;
+  item.action?.();
+  if (item.type === 'checkbox' || item.type === 'radio') return;
+  closeDrawer();
+}
+function closeDrawer() {
+  drawerOpen.value = false;
+  openGroup.value = null;
+  drawerSub.value = null;
+}
 function onItemClick(item: MenuItem) {
   item.action?.();
 }
@@ -243,10 +284,12 @@ function onGlobalKey(e: KeyboardEvent) {
 onMounted(() => {
   document.addEventListener('click', onGlobalClick);
   document.addEventListener('keydown', onGlobalKey);
+  narrowMq?.addEventListener('change', onNarrowChange);
 });
 onBeforeUnmount(() => {
   document.removeEventListener('click', onGlobalClick);
   document.removeEventListener('keydown', onGlobalKey);
+  narrowMq?.removeEventListener('change', onNarrowChange);
 });
 
 // 语言引用防 tree-shake（i18n 响应式依赖）
@@ -255,8 +298,20 @@ void lang;
 
 <template>
   <nav ref="rootEl" class="menubar">
+    <!-- 窄屏触发器：汉堡按钮（宽屏不渲染） -->
+    <button
+      v-if="isNarrow"
+      class="m-burger"
+      :aria-expanded="drawerOpen"
+      aria-label="Menu"
+      @click.stop="drawerOpen = !drawerOpen"
+    >
+      <span class="m-burger-bar" /><span class="m-burger-bar" /><span class="m-burger-bar" />
+    </button>
+
     <div
       v-for="(menu, idx) in menus"
+      v-show="!isNarrow"
       :key="menu.label"
       class="m-top"
       :class="{ open: openMenu === idx }"
@@ -321,6 +376,74 @@ void lang;
       </div>
     </div>
   </nav>
+
+  <!-- 窄屏抽屉：覆盖层 + 左侧手风琴面板 -->
+  <template v-if="isNarrow && drawerOpen">
+    <div class="m-overlay" @click="closeDrawer" />
+    <aside class="m-drawer" role="menu">
+      <div class="m-drawer-head">
+        <span class="m-drawer-title">{{ t('appName') }}</span>
+        <button class="m-drawer-close" aria-label="Close" @click="closeDrawer">✕</button>
+      </div>
+      <div class="m-drawer-body">
+        <div v-for="(menu, idx) in menus" :key="menu.label" class="m-group">
+          <button class="m-group-head" @click="toggleGroup(idx)">
+            <span class="m-text">{{ menu.label }}</span>
+            <span class="m-group-arrow">{{ openGroup === idx ? '▾' : '▸' }}</span>
+          </button>
+          <div v-if="openGroup === idx" class="m-group-body">
+            <template v-for="(item, iidx) in menu.items" :key="iidx">
+              <div v-if="item.type === 'sep'" class="m-sep" />
+              <!-- 二级子菜单：内联展开，避免窄屏右侧溢出 -->
+              <div v-else-if="item.children" class="m-sub">
+                <button class="m-item m-sub-head" @click="toggleDrawerSub(iidx)">
+                  <span class="m-mark">{{ item.selected?.() ? '●' : '' }}</span>
+                  <span class="m-text">{{ item.label }}</span>
+                  <span v-if="item.valueText" class="m-shortcut">{{ item.valueText() }}</span>
+                  <span class="m-arrow">{{ drawerSub === iidx ? '▾' : '▸' }}</span>
+                </button>
+                <div v-if="drawerSub === iidx" class="m-sub-body">
+                  <button
+                    v-for="(child, cidx) in item.children"
+                    :key="cidx"
+                    class="m-item m-sub-item"
+                    :class="{
+                      disabled: child.disabled?.(),
+                      radio: child.type === 'radio',
+                      selected: child.type === 'radio' && child.selected?.(),
+                    }"
+                    :disabled="child.disabled?.()"
+                    @click="onDrawerItemClick(child)"
+                  >
+                    <span class="m-mark">{{ child.type === 'checkbox' ? (child.checked?.() ? '✓' : '') : child.type === 'radio' ? (child.selected?.() ? '●' : '○') : '' }}</span>
+                    <span class="m-text">{{ child.label }}</span>
+                  </button>
+                </div>
+              </div>
+              <button
+                v-else
+                class="m-item"
+                :class="{
+                  disabled: item.disabled?.(),
+                  checked: item.type === 'checkbox' && item.checked?.(),
+                  radio: item.type === 'radio',
+                  selected: item.type === 'radio' && item.selected?.(),
+                }"
+                :disabled="item.disabled?.()"
+                @click="onDrawerItemClick(item)"
+              >
+                <span class="m-mark">
+                  {{ item.type === 'checkbox' ? (item.checked?.() ? '✓' : '') : item.type === 'radio' ? (item.selected?.() ? '●' : '○') : '' }}
+                </span>
+                <span class="m-text">{{ item.label }}</span>
+                <span v-if="item.shortcut" class="m-shortcut">{{ item.shortcut }}</span>
+              </button>
+            </template>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </template>
 </template>
 
 <style scoped>
@@ -396,4 +519,121 @@ void lang;
   padding: 4px;
   z-index: 70;
 }
+
+/* ---------- 窄屏抽屉 ---------- */
+
+/* 汉堡触发器：≥44px 触摸目标，宽屏不渲染（v-if） */
+.m-burger {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  width: 44px;
+  height: 40px;
+  margin: 0 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.m-burger:hover { background: rgba(255, 255, 255, 0.08); }
+.m-burger-bar {
+  display: block;
+  width: 20px;
+  height: 2px;
+  background: currentColor;
+  border-radius: 1px;
+}
+
+/* 覆盖层：遮住编辑区，点击关闭 */
+.m-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 100;
+  animation: mFadeIn 0.15s ease-out;
+}
+@keyframes mFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* 抽屉面板：左侧滑入，宽度不超过屏宽 85% */
+.m-drawer {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(320px, 85vw);
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  z-index: 101;
+  display: flex;
+  flex-direction: column;
+  animation: mSlideIn 0.2s ease-out;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.35);
+}
+@keyframes mSlideIn { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+
+.m-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 0 8px 0 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--toolbar-bg);
+  flex-shrink: 0;
+}
+.m-drawer-title { font-size: 14px; font-weight: 600; color: var(--fg); }
+.m-drawer-close {
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 18px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.m-drawer-close:hover { background: rgba(255, 255, 255, 0.08); color: var(--fg); }
+
+.m-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 0 24px;
+}
+
+/* 手风琴分组头 */
+.m-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  border: none;
+  background: var(--toolbar-bg);
+  color: var(--fg);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+.m-group-head:hover { background: color-mix(in srgb, var(--toolbar-bg) 80%, var(--fg) 8%); }
+.m-group-arrow { color: var(--fg-muted); font-size: 12px; }
+.m-group-body { padding: 4px 0; }
+
+/* 抽屉内菜单项：加大触摸目标（≥44px 高），覆盖桌面的小 padding */
+.m-drawer .m-item {
+  min-height: 44px;
+  padding: 8px 14px;
+  font-size: 14px;
+  gap: 10px;
+}
+.m-drawer .m-sub-head { font-weight: 500; }
+.m-drawer .m-sub-item { padding-left: 34px; } /* 缩进体现层级 */
+.m-drawer .m-arrow { margin-left: 2px; }
+
 </style>
