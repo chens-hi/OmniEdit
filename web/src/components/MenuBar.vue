@@ -65,23 +65,13 @@ async function doReset() {
 
 // ---- 菜单定义 ----
 
-const saveItem = computed<MenuItem | null>(() => {
-  const tab = store.activeTab;
-  if (!tab) return null;
-  // 草稿：另存为已移至页签右键菜单，文件菜单不再提供保存入口
-  if (!tab.path) return null;
-  const canSave = tab.dirty;
-  return { type: 'item', label: t('menuSave'), shortcut: 'Ctrl+S', disabled: () => !canSave, action: () => { openMenu.value = null; store.saveActive(); } };
-});
-
 const menus = computed<Menu[]>((): Menu[] => {
   const tab = store.activeTab;
+  // 保存/另存为均已移至页签右键菜单；文件菜单只保留 新建/打开/退出
   const fileItems: MenuItem[] = [
     { type: 'item', label: t('menuNew'), action: () => { openMenu.value = null; store.newUntitled(); } },
     { type: 'item', label: t('menuOpen'), action: () => { openMenu.value = null; void store.openViaPicker(); } },
   ];
-  // 另存为已移至页签右键菜单；文件菜单不再放分割线
-  if (saveItem.value) fileItems.push(saveItem.value);
   fileItems.push({ type: 'item', label: t('menuExit'), action: doExit });
 
   const canSearch = !!tab && !tab.loading;

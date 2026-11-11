@@ -64,7 +64,7 @@ const dict = {
   menuView: { zh: '视图', en: 'View' },
   menuHelp: { zh: '帮助', en: 'Help' },
   menuNew: { zh: '新建', en: 'New' },
-  menuOpen: { zh: '打开…', en: 'Open…' },
+  menuOpen: { zh: '打开', en: 'Open' },
   menuSave: { zh: '保存', en: 'Save' },
   menuSaveAs: { zh: '另存为…', en: 'Save As…' },
   menuExit: { zh: '退出', en: 'Exit' },
