@@ -33,6 +33,49 @@ function onTabContextmenu(e: MouseEvent, id: number) {
 
 // 触摸设备的长按菜单与拖动排序统一由下方「触摸手势」块处理（Pointer 手势）。
 
+// ---- 页签状态点 ----
+// 设计：只占一个圆点位。单一状态=纯色实心圆；多状态并存时按 n 等分扇形上色
+// （conic-gradient 的硬分界），一眼看出「这页有几种待处理状态」。
+// 比堆多个图标省地方——窄屏标签本来就没多少宽度。
+// 状态色取自主题变量：黄=未保存，蓝=磁盘有更新。
+
+/** 状态定义：顺序即扇区顺序（先黄后蓝，与 VS Code 的脏标记语义对齐）。 */
+const STATUS = {
+  dirty: { color: 'var(--dot-dirty)', label: () => t('unsaved') },
+  disk: { color: 'var(--dot-disk)', label: () => t('diskChanged') },
+} as const;
+
+type StatusKey = keyof typeof STATUS;
+
+/**
+ * tabStatus 计算某页签的状态点样式与提示。
+ * count=0 表示无状态（模板据此不渲染圆点）。
+ */
+function tabStatus(tab: { dirty: boolean; externalChanged?: boolean }) {
+  const keys: StatusKey[] = [];
+  if (tab.dirty) keys.push('dirty');
+  if (tab.externalChanged) keys.push('disk');
+  if (!keys.length) return { count: 0, style: {}, title: '' };
+  const n = keys.length;
+  if (n === 1) {
+    // 单状态：纯色圆点（比 conic-gradient 更省合成层，视觉也更干净）
+    return {
+      count: 1,
+      style: { background: STATUS[keys[0]].color },
+      title: STATUS[keys[0]].label(),
+    };
+  }
+  // 多状态：等分扇形。每段 [i/n, (i+1)/n] 用该状态色，边界硬切（无渐变过渡）。
+  const stops = keys
+    .map((k, i) => `${STATUS[k].color} ${(i * 100) / n}% ${((i + 1) * 100) / n}%`)
+    .join(', ');
+  return {
+    count: n,
+    style: { background: `conic-gradient(${stops})` },
+    title: keys.map(k => STATUS[k].label()).join(' · '),
+  };
+}
+
 /** 右键菜单项：关闭 ▸（当前/右侧/左侧/其他/所有）。保存/另存为已回到文件菜单。 */
 const ctxItems = computed(() => {
   const id = ctxMenu.value?.tabId;
@@ -368,16 +411,19 @@ watch(() => [store.activeId, store.tabs.length], async () => {
           @contextmenu.prevent="onTabContextmenu($event, tab.id)"
         >
           <span class="tab-name">{{ tab.name }}</span>
-          <!-- 恢复会话时后台补加载的标签：名称降透明度表示内容未就绪 -->
-          <span v-if="tab.loading" class="tab-loading" :title="t('loading')" />
-          <!-- 磁盘被外部修改、用户尚未处理：切过去会询问该重载还是保持 -->
+          <!-- 状态点：单状态=纯色圆点；多状态=按 n 等分扇形上色（conic-gradient）。
+               加载中优先（转圈替代圆点，表示内容未就绪）。 -->
           <span
-            v-if="!tab.loading && tab.externalChanged"
-            class="tab-disk"
-            :title="t('diskChanged')"
-          >⇣</span>
-          <!-- 未保存修改：与「磁盘已更新」可同时存在（本地改了、磁盘也被别人改了） -->
-          <span v-if="!tab.loading && tab.dirty" class="tab-dirty" :title="t('unsaved')">●</span>
+            v-if="tab.loading"
+            class="tab-loading"
+            :title="t('loading')"
+          />
+          <span
+            v-else-if="tabStatus(tab).count"
+            class="tab-dot"
+            :style="tabStatus(tab).style"
+            :title="tabStatus(tab).title"
+          />
           <span class="tab-close" :title="t('close')" @click.stop="store.closeTab(tab.id)">×</span>
         </div>
       </div>
@@ -489,9 +535,15 @@ html[data-theme="light"] .tab:hover { background: rgba(0, 0, 0, 0.05); }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.tab-dirty { flex-shrink: 0; color: #e2c08d; }
-/* 磁盘已被外部更新（切过去会询问重载/保持）：用蓝色区别于未保存的黄点 */
-.tab-disk { flex-shrink: 0; color: var(--accent); font-size: 11px; }
+/* 页签状态点：一个圆形点位承载全部状态。
+   单状态由 JS 给纯色 background；多状态用 conic-gradient 等分扇形。
+   尺寸/圆角在这里固定，颜色一律来自 JS（避免两处硬编码）。 */
+.tab-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
 .tab-close {
   flex-shrink: 0;
   border-radius: 3px;
