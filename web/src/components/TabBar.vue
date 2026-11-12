@@ -486,10 +486,15 @@ watch(() => [store.activeId, store.tabs.length], async () => {
   align-items: center;
   gap: 6px;
   flex: 0 1 auto;      /* 允许收缩：多标签按比例压缩塞满容器 */
-  min-width: 88px;     /* 收缩下限：扣掉竖条/内距/关闭号后仍能显示约 6 个字 */
+  min-width: 100px;    /* 收缩下限：扣掉左右各 20px 留白后，名字仍能显示约 6 个字 */
   max-width: 200px;
-  /* 左侧 11px = 常规 8px 内距 + 3px 状态竖条，避免文字贴边 */
-  padding: 6px 8px 6px 11px;
+  /* 左右内距完全相等 → 文件名视觉居中。
+     两侧各 20px 的"空白"里都含装饰元素，故视觉重量对称：
+       左 20px = 3px 状态竖条 + 17px 空隙
+       右 20px = 16px 关闭号 + 4px 空隙（关闭号绝对定位于此区间内）
+     关闭号不参与流，隐藏时也保留这段空白，文字位置恒定不跳动。
+     注意 padding 不含 border-right（1px），故右侧收 1px 让左右留白实测相等。 */
+  padding: 6px 19px 6px 20px;
   border-right: 1px solid var(--border);
   cursor: pointer; /* 平时正常指针；握手光标只在拖动中显示（.tabs.is-dragging） */
   white-space: nowrap;
@@ -534,6 +539,8 @@ html[data-theme="light"] .tab:hover { background: rgba(0, 0, 0, 0.05); }
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* 居中：左右 padding 已对称（各 20px），文字自然落在页签正中 */
+  text-align: center;
 }
 /* 页签状态竖条：贴左缘 3px，纵向分段表示状态（颜色由 JS 给）。
    绝对定位 → 不占 flex 横向空间；z-index 高于页签背景但低于关闭按钮。 */
@@ -557,7 +564,7 @@ html[data-theme="light"] .tab:hover { background: rgba(0, 0, 0, 0.05); }
    绝对定位 + 名字右侧预留 padding 可以做到宽度恒定。 */
 .tab-close {
   position: absolute;
-  right: 4px;
+  right: 2px;
   top: 50%;
   transform: translateY(-50%);
   border-radius: 3px;
@@ -575,8 +582,6 @@ html[data-theme="light"] .tab:hover { background: rgba(0, 0, 0, 0.05); }
 }
 .tab:hover .tab-close { display: block; background: var(--toolbar-bg); }
 .tab.active:hover .tab-close { background: var(--bg); }
-/* 名字右侧留出关闭号宽度，避免悬停时底部字符被遮住 */
-.tab-name { padding-right: 18px; }
 /* 悬停到关闭号本身：给个可见的 hover 反馈 */
 .tab-close:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 14%, transparent) !important; }
 .tab-new {
