@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.5.86
+version=0.5.87
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.5.86: 预览改为填满整个编辑区（非分栏），点眼睛全屏预览、点铅笔回源码
+changelog=0.5.87: 预览页去掉标题栏（眼/笔按钮切回编辑），更清爽

@@ -143,9 +143,6 @@ const dict = {
   ctxPaste: { zh: '粘贴', en: 'Paste' },
   ctxSelectAll: { zh: '全选', en: 'Select All' },
   // 预览
-  previewMd: { zh: '预览（Markdown）', en: 'Preview (Markdown)' },
-  previewHtml: { zh: '预览（HTML）', en: 'Preview (HTML)' },
-  closePreview: { zh: '关闭预览', en: 'Close Preview' },
   togglePreview: { zh: '显示预览', en: 'Show Preview' },
   toggleEdit: { zh: '返回编辑', en: 'Back to Edit' },
   menuAutoPreview: { zh: '自动预览', en: 'Auto Preview' },

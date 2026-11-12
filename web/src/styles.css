@@ -235,31 +235,6 @@ body,
   display: flex;
   flex-direction: column;
 }
-/* 预览面板头：标题 + 关闭按钮 */
-.preview-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
-  background: var(--toolbar-bg);
-  flex-shrink: 0;
-}
-.preview-bar-title {
-  font-size: 12px;
-  color: var(--fg-muted);
-}
-.preview-close {
-  border: none;
-  background: transparent;
-  color: var(--fg-muted);
-  cursor: pointer;
-  font-size: 13px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  line-height: 1;
-}
-.preview-close:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 10%, transparent); }
 /* 眼睛/铅笔：预览/编辑切换按钮，绝对定位于编辑区右上角 */
 .preview-toggle {
   position: absolute;
