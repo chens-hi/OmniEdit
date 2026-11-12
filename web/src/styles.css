@@ -13,6 +13,29 @@
   /* 页签状态点：黄=未保存（沿用 VS Code 脏标记色），蓝=磁盘有更新 */
   --dot-dirty: #e2c08d;
   --dot-disk: #4a9eff;
+  /* 文本选中背景（编辑区/预览区共用）。
+     深色主题下**不能**用中等/明亮蓝：语法高亮里的关键字蓝(#569cd6)、
+     字符串橙、注释绿都会被吞掉（实测 #2f5d8c 有 3/7 种不达标、
+     VS Code 深蓝 #264f78 有 2/7 不达标）。取更暗一档 #1f3a5f：
+     7/7 种高亮色对比度全部 ≥3:1，且与 #1e1e1e 底色仍有 1.45:1 区分度，
+     选中范围一眼可辨。 */
+  --sel-bg: #1f3a5f;
+  --sel-bg-preview: #1f3a5f;
+  /* 搜索命中：普通命中=暗黄，当前命中=亮橙（两者需明显区分） */
+  --sel-match: color-mix(in srgb, var(--accent) 25%, transparent);
+  --sel-find: rgba(234, 175, 60, 0.32);
+  --sel-find-active: rgba(234, 175, 60, 0.62);
+  /* 交互态叠加：悬停/选中行的底色。用 fg 半透明而非固定白色——
+     固定 rgba(255,255,255,x) 在浅色主题的白底上等于没变化，悬停完全看不出来。 */
+  --hover: color-mix(in srgb, var(--fg) 8%, transparent);
+  --hover-strong: color-mix(in srgb, var(--fg) 14%, transparent);
+  /* 弱化文字（快捷键提示、箭头、状态栏次要项）：走主题变量，
+     避免硬编码 #888 在浅色主题下对比不足。 */
+  --fg-dim: #888;
+  /* 空白页/占位文字 */
+  --placeholder-title: #555;
+  --placeholder-sub: #555;
+  --placeholder-hint: #666;
   /* 显示符号（空白可见化）颜色——暗色主题（暖橙，参考 Notepad++ 风格制表符箭头） */
   --ws-dot-color: rgba(232, 158, 92, 0.55);
   --ws-line-color: rgba(232, 158, 92, 0.55);
@@ -33,6 +56,19 @@ html[data-theme="light"] {
   --warning: #9a6700;   /* 警示反馈——浅色主题 */
   --dot-dirty: #bf8803;   /* 页签未保存点——浅色主题下提深，白底可见 */
   --dot-disk: #0969da;    /* 页签磁盘更新点——浅色主题 */
+  /* 文本选中背景——浅色主题：淡蓝底 + 深字，对比充分且不刺眼 */
+  --sel-bg: #b6d7f5;
+  --sel-bg-preview: #b6d7f5;
+  --sel-match: color-mix(in srgb, var(--accent) 18%, transparent);
+  --sel-find: rgba(255, 213, 79, 0.65);
+  --sel-find-active: rgba(255, 152, 0, 0.75);
+  /* 交互态/弱化文字：浅色主题下用更深的灰，白底才看得清 */
+  --hover: color-mix(in srgb, var(--fg) 7%, transparent);
+  --hover-strong: color-mix(in srgb, var(--fg) 12%, transparent);
+  --fg-dim: #6b7280;
+  --placeholder-title: #4a5563;
+  --placeholder-sub: #5a6673;
+  --placeholder-hint: #6b7280;
   /* 显示符号颜色——浅色主题（深橙系，白底上保持可见） */
   --ws-dot-color: rgba(196, 120, 48, 0.60);
   --ws-line-color: rgba(196, 120, 48, 0.60);
@@ -144,7 +180,7 @@ body,
 }
 
 .btn.ghost:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--hover);
   color: var(--fg);
 }
 
@@ -217,7 +253,7 @@ body,
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #666;
+  color: var(--placeholder-hint);
   /* 需接收双击以新建页签：占位层只在无活动页签时显示，不会挡住编辑器 */
   pointer-events: auto;
   text-align: center;
@@ -227,24 +263,24 @@ body,
 .placeholder-title {
   font-size: 28px;
   font-weight: 600;
-  color: #555;
+  color: var(--placeholder-title);
 }
 
 .placeholder-sub {
   margin-top: 6px;
   font-size: 14px;
-  color: #555;
+  color: var(--placeholder-sub);
 }
 
 .placeholder-hint {
   margin-top: 22px;
   font-size: 13px;
-  color: #666;
+  color: var(--placeholder-hint);
 }
 .placeholder-hint-sub {
   margin-left: 6px;
   font-size: 12px;
-  color: #888;
+  color: var(--fg-dim);
 }
 
 /* 启动恢复中：只显示一个低调的「加载中」，不出现欢迎语（避免一闪而过的空态） */
@@ -349,13 +385,13 @@ body,
 }
 
 .sbi {
-  color: #888;
+  color: var(--fg-dim);
   font-variant-numeric: tabular-nums; /* 等宽数字：行列/大小变化不跳动 */
 }
 
 /* 合并项内光标段：比行数段弱一层（高频跳动部分视觉最轻） */
 .sbi .dim {
-  color: #666;
+  color: var(--fg-dim);
 }
 
 /* ---------- 搜索浮窗（@codemirror/search createPanel 定制） ---------- */
@@ -432,7 +468,7 @@ body,
 .omni-sbtn.omni-toggle[aria-pressed="true"] {
   border-color: var(--accent);
   color: var(--accent);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--hover);
 }
 
 .omni-close { font-size: 13px; }
@@ -441,17 +477,25 @@ body,
   min-width: 48px;
   text-align: right;
   font-size: 11px;
-  color: #888;
+  color: var(--fg-dim);
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
 }
 
-/* 匹配高亮：统一到主题 accent（默认配色与深色主题不符） */
-.cm-searchMatch {
-  background: rgba(255, 200, 87, 0.25);
-  outline: 1px solid rgba(255, 200, 87, 0.5);
+/* 搜索命中配色已移到 App.vue 的 EditorView.theme（走 --sel-find / --sel-find-active，
+   随主题切换）。此处不再保留硬编码橙色——它与主题 accent 不搭，且会与
+   编辑器主题规则打架。 */
+
+/* 预览区与编辑区共用一套选中色：浏览器默认高亮在深色主题下是深蓝底，
+   与浅色正文对比不足；这里统一到 --sel-bg，并显式设文字色防继承异常。 */
+.pv-doc ::selection {
+  background: var(--sel-bg-preview);
+  color: var(--fg);
 }
-.cm-searchMatch-selected { background: rgba(255, 152, 0, 0.45); }
+.pv-doc ::-moz-selection {
+  background: var(--sel-bg-preview);
+  color: var(--fg);
+}
 
 /* ANSI 编码徽标：需要用户留意的转码语义 */
 .sbi.badge {
@@ -501,3 +545,6 @@ body,
   .sb-right { gap: 8px; }
   .sb-opt { display: none; }
 }
+
+
+

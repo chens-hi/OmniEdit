@@ -44,7 +44,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.6.18';
+const appVersion = '0.6.19';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -158,8 +158,16 @@ const appEditorThemeExt = EditorView.theme({
   '&': { color: 'var(--fg)', backgroundColor: 'var(--bg)' },
   '.cm-content': { caretColor: 'var(--accent)' },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--accent)' },
-  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
-    backgroundColor: 'color-mix(in srgb, var(--accent) 30%, transparent)',
+  /**
+   * 选中背景：必须压过 CodeMirror 默认主题的
+   * `.ͼ2.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground`
+   * （4 类 + 子选择器，特异性 (0,4,0)）——它把深色主题下的选区设成近白色
+   * rgb(215,212,240)，导致浅色语法高亮文字几乎不可读。
+   * 这里补上同样深的选择器路径保证特异性胜出；颜色走 --sel-bg 主题变量，
+   * 深/浅色各取一档（深色偏蓝、浅色偏浅蓝，均与控制台/VS Code 观感一致）。
+   */
+  '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
+    backgroundColor: 'var(--sel-bg)',
   },
   '.cm-activeLine': { backgroundColor: 'color-mix(in srgb, var(--fg) 5%, transparent)' },
   '.cm-gutters': { backgroundColor: 'var(--toolbar-bg)', color: 'var(--fg-muted)', border: 'none' },
@@ -173,7 +181,10 @@ const appEditorThemeExt = EditorView.theme({
     border: 'none',
     color: 'var(--fg-muted)',
   },
-  '.cm-selectionMatch': { backgroundColor: 'color-mix(in srgb, var(--accent) 25%, transparent)' },
+  // 搜索命中也走主题色（原样式表里硬编码橙色，与主题 accent 蓝不搭）
+  '.cm-selectionMatch': { backgroundColor: 'var(--sel-match)' },
+  '.cm-searchMatch': { backgroundColor: 'var(--sel-find)', outline: 'none' },
+  '.cm-searchMatch.cm-searchMatch-selected': { backgroundColor: 'var(--sel-find-active)' },
 });
 
 /** 当前主题对应的 CodeMirror 主题扩展（暗浅同主题，变量自动切换）。 */

@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.6.18
+version=0.6.19
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.6.18: 全局禁止拖拽选中——仅编辑区与预览区可选中文字（输入框保持可用），避免误拖菜单/页签/状态栏出现蓝色选区
+changelog=0.6.19: 修复深色主题选中文字看不清（选区色被 CodeMirror 默认主题覆盖成近白底）；预览区选中色统一到主题；搜索命中色改为主题变量；修复浅色主题下菜单/页签悬停看不出变化

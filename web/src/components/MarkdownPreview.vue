@@ -33,7 +33,7 @@ const html = computed(() => {
   margin-top: 20px;
 }
 .md-preview :deep(code) {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--hover);
   padding: 2px 5px;
   border-radius: 3px;
   font-size: 13px;
@@ -53,6 +53,8 @@ const html = computed(() => {
   border-left: 3px solid var(--border);
   margin-left: 0;
   padding-left: 12px;
-  color: #aaa;
+  color: var(--fg-dim);
 }
 </style>
+
+

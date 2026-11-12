@@ -471,7 +471,7 @@ void lang;
   font-size: 13px;
   color: var(--fg);
 }
-.m-top:hover, .m-top.open { background: rgba(255, 255, 255, 0.08); }
+.m-top:hover, .m-top.open { background: var(--hover); }
 
 .m-drop {
   position: absolute;
@@ -500,19 +500,19 @@ void lang;
   border-radius: 4px;
   text-align: left;
 }
-.m-item:hover:not(.disabled) { background: rgba(255, 255, 255, 0.08); }
+.m-item:hover:not(.disabled) { background: var(--hover); }
 .m-item.disabled { opacity: 0.4; cursor: default; }
 
 .m-mark { width: 14px; flex-shrink: 0; text-align: center; color: var(--accent); }
 .m-text { flex: 1; }
-.m-shortcut { color: #888; font-size: 11px; }
+.m-shortcut { color: var(--fg-dim); font-size: 11px; }
 
 .m-sep { height: 1px; background: var(--border); margin: 4px 8px; }
 
 /* 二级子菜单 */
 .m-has-sub { position: relative; cursor: pointer; }
-.m-has-sub:hover { background: rgba(255, 255, 255, 0.08); }
-.m-arrow { color: #888; font-size: 11px; margin-left: 4px; }
+.m-has-sub:hover { background: var(--hover); }
+.m-arrow { color: var(--fg-dim); font-size: 11px; margin-left: 4px; }
 .m-subdrop {
   position: absolute;
   top: -5px;
@@ -546,7 +546,7 @@ void lang;
   border-radius: 6px;
   flex-shrink: 0;
 }
-.m-burger:hover { background: rgba(255, 255, 255, 0.08); }
+.m-burger:hover { background: var(--hover); }
 .m-burger-bar {
   display: block;
   width: 20px;
@@ -636,3 +636,4 @@ void lang;
 .m-drawer .m-arrow { margin-left: 2px; }
 
 </style>
+

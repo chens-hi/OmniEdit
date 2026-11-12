@@ -555,8 +555,7 @@ watch(() => [store.activeId, store.tabs.length], async () => {
 }
 .tab.drag-before::before { left: 0; }
 .tab.drag-after::after { right: 0; }
-.tab:hover { background: rgba(0, 0, 0, 0.15); }
-html[data-theme="light"] .tab:hover { background: rgba(0, 0, 0, 0.05); }
+.tab:hover { background: var(--hover); }
 .tab.active {
   background: var(--bg);
   color: var(--fg);
@@ -625,3 +624,4 @@ html[data-theme="light"] .tab:hover { background: rgba(0, 0, 0, 0.05); }
 }
 .tab-new:hover { color: var(--fg); }
 </style>
+
