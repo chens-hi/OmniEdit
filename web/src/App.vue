@@ -45,7 +45,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.83';
+const appVersion = '0.5.84';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -437,26 +437,34 @@ watch(() => [store.showSpaces, store.showTabs, store.showLineBreaks], () => {
 // 浏览器原生菜单的焦点，菜单点击后仍可操作已挂载的 view）。
 // 关键：view.state.selection 非响应式，computed 不追踪——故在 contextmenu 那刻
 // 把「有无选区」快照进 editorCtx，菜单项 disabled 从快照读，避免读到过期状态。
-const editorCtx = ref<{ x: number; y: number; hasSel: boolean } | null>(null);
-
-/** 当前主选区（无则 null）。 */
-function mainSel() {
-  if (!view) return null;
-  const s = view.state.selection.main;
-  return s.empty ? null : { from: s.from, to: s.to, text: view.state.sliceDoc(s.from, s.to) };
-}
+const editorCtx = ref<{ x: number; y: number } | null>(null);
 
 function ctxCopy() {
-  const sel = mainSel();
-  if (!sel) return;
-  void navigator.clipboard.writeText(sel.text).catch(() => {});
+  if (!view) return;
+  const s = view.state.selection.main;
+  if (!s.empty) {
+    void navigator.clipboard.writeText(view.state.sliceDoc(s.from, s.to)).catch(() => {});
+    return;
+  }
+  // 无选区：复制光标所在整行
+  const line = view.state.doc.lineAt(s.head);
+  void navigator.clipboard.writeText(line.text).catch(() => {});
 }
 
 function ctxCut() {
-  const sel = mainSel();
-  if (!view || !sel) return;
-  void navigator.clipboard.writeText(sel.text).catch(() => {});
-  view.dispatch({ changes: { from: sel.from, to: sel.to }, selection: { anchor: sel.from } });
+  if (!view) return;
+  const s = view.state.selection.main;
+  if (!s.empty) {
+    // 有选区：剪切选区
+    void navigator.clipboard.writeText(view.state.sliceDoc(s.from, s.to)).catch(() => {});
+    view.dispatch({ changes: { from: s.from, to: s.to }, selection: { anchor: s.from } });
+    return;
+  }
+  // 无选区：剪切光标所在整行（复制该行并删除，含换行）
+  const line = view.state.doc.lineAt(s.head);
+  void navigator.clipboard.writeText(line.text).catch(() => {});
+  const to = line.to < view.state.doc.length ? line.to + 1 : line.to;
+  view.dispatch({ changes: { from: line.from, to }, selection: { anchor: line.from } });
 }
 
 async function ctxPaste() {
@@ -483,15 +491,15 @@ function onEditorContextmenu(e: MouseEvent) {
   // 空白页无编辑内容，走浏览器默认菜单
   if (!store.activeTab) return;
   e.preventDefault();
-  editorCtx.value = { x: e.clientX, y: e.clientY, hasSel: !!mainSel() };
+  editorCtx.value = { x: e.clientX, y: e.clientY };
 }
 
 const editorCtxItems = computed(() => {
-  const hasSel = editorCtx.value?.hasSel ?? false;
+  // 复制/剪切：无选区时作用于光标所在整行，故只要有文件即可用（不只选中时）
   const hasDoc = !!store.activeTab;
   return [
-    { label: t('ctxCopy'), shortcut: 'Ctrl+C', disabled: !hasSel, action: ctxCopy },
-    { label: t('ctxCut'), shortcut: 'Ctrl+X', disabled: !hasSel, action: ctxCut },
+    { label: t('ctxCopy'), shortcut: 'Ctrl+C', disabled: !hasDoc, action: ctxCopy },
+    { label: t('ctxCut'), shortcut: 'Ctrl+X', disabled: !hasDoc, action: ctxCut },
     { label: t('ctxPaste'), shortcut: 'Ctrl+V', action: () => void ctxPaste() },
     { label: t('ctxSelectAll'), shortcut: 'Ctrl+A', disabled: !hasDoc, action: ctxSelectAll },
   ];

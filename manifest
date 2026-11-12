@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.5.83
+version=0.5.84
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.5.83: 编辑菜单尾部加入 复制/剪切/粘贴/全选；修复右键复制/剪切选区后仍禁用（选区快照）
+changelog=0.5.84: 复制/剪切无选区时作用于光标所在整行（复制该行/剪切删除该行）
