@@ -370,7 +370,14 @@ watch(() => [store.activeId, store.tabs.length], async () => {
           <span class="tab-name">{{ tab.name }}</span>
           <!-- 恢复会话时后台补加载的标签：名称降透明度表示内容未就绪 -->
           <span v-if="tab.loading" class="tab-loading" :title="t('loading')" />
-          <span v-else-if="tab.dirty" class="tab-dirty" :title="t('unsaved')">●</span>
+          <!-- 磁盘被外部修改、用户尚未处理：切过去会询问该重载还是保持 -->
+          <span
+            v-if="!tab.loading && tab.externalChanged"
+            class="tab-disk"
+            :title="t('diskChanged')"
+          >⇣</span>
+          <!-- 未保存修改：与「磁盘已更新」可同时存在（本地改了、磁盘也被别人改了） -->
+          <span v-if="!tab.loading && tab.dirty" class="tab-dirty" :title="t('unsaved')">●</span>
           <span class="tab-close" :title="t('close')" @click.stop="store.closeTab(tab.id)">×</span>
         </div>
       </div>
@@ -483,6 +490,8 @@ html[data-theme="light"] .tab:hover { background: rgba(0, 0, 0, 0.05); }
   text-overflow: ellipsis;
 }
 .tab-dirty { flex-shrink: 0; color: #e2c08d; }
+/* 磁盘已被外部更新（切过去会询问重载/保持）：用蓝色区别于未保存的黄点 */
+.tab-disk { flex-shrink: 0; color: var(--accent); font-size: 11px; }
 .tab-close {
   flex-shrink: 0;
   border-radius: 3px;

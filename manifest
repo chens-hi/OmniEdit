@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.6.8
+version=0.6.9
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.6.8: 优化打开失败提示文案——去掉「打开失败: 」前缀与嵌套冒号，改为「文件过大，无法打开（50.0 MB，上限 10 MB）」；保存失败与重载提示同步改用全角标点
+changelog=0.6.9: 修复外部修改后「保持当前」无法保存的问题（保存时用磁盘最新 mtime，可正常覆盖写入）；修复重载失败仍提示成功；后台页签被外部修改时显示磁盘标记

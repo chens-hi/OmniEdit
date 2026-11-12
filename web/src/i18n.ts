@@ -161,6 +161,8 @@ const dict = {
     en: 'was changed externally. Reload it?',
   },
   reloaded: { zh: '已从磁盘重新加载', en: 'Reloaded from disk' },
+  reloadFailed: { zh: '重新加载失败（文件可能已被删除或无法读取）', en: 'Reload failed (file may be deleted or unreadable)' },
+  diskChanged: { zh: '磁盘上有更新，点击页签查看', en: 'Changed on disk. Click the tab to review' },
 } as const;
 
 export type MsgKey = keyof typeof dict;

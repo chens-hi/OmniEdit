@@ -34,15 +34,17 @@ async function handleChange(path: string, mtime: string) {
   // 说明这是本客户端的写入而非真外部修改。
   if (mtime && tab.mtime && mtime === tab.mtime) return;
 
+  // 记下磁盘当前 mtime：用户若选「保持当前」，保存时要用它做 baseMtime
+  // 才能覆盖写入（否则一直撞冲突）。
+  if (mtime) tab.diskMtime = mtime;
+  tab.externalChanged = true;
+
   if (tab.id !== store.activeId) {
     // 非活动页签：只打标记，不打扰。切到该页时由 App 触发询问。
-    tab.externalChanged = true;
     return;
   }
 
-  // 活动页签：先打标记再问（promptExternalChange 以该标记为前提，
-  // 且它同时承担「是否有未决的外部变更」这一状态）。
-  tab.externalChanged = true;
+  // 活动页签：立刻询问（有无未保存修改都问，磁盘变了交给用户决定）。
   await store.promptExternalChange(tab.id);
   void mtime;
 }

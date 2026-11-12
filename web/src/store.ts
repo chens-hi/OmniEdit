@@ -127,6 +127,13 @@ export interface Tab {
    * 非活动页签收到变更时只置此标记（不弹框打扰），切到该页签时再询问。
    */
   externalChanged?: boolean;
+  /**
+   * 外部变更后磁盘上的 mtime（由推送事件带下来）。
+   * 用户选「保持当前」时记下它，保存时作为 baseMtime 回传——
+   * 否则 baseMtime 仍停留在加载时的旧值，后端冲突检测必然拒绝，
+   * 用户就卡在「要么丢修改重载、要么根本存不进去」。
+   */
+  diskMtime?: string;
   /** 询问框是否正在展示（防重入，不持久化、不参与模板渲染）。 */
   externalPrompting?: boolean;
 }
@@ -740,8 +747,11 @@ export const useEditorStore = defineStore('editor', () => {
    * promptExternalChange 询问用户「外部已修改，重载还是保持当前」。
    *
    * 只有活动页签会走到这里（fileWatch 对非活动页签只打标记，切页时再问）。
-   * 无论本地有没有未保存修改都询问——磁盘内容变了，取舍应由用户决定；
-   * 选「保持当前」则保留内存中的版本（下次保存会覆盖磁盘内容）。
+   * 无论本地有没有未保存修改都询问——磁盘内容变了，取舍应由用户决定。
+   *
+   * 选「保持当前」时把磁盘 mtime 记进 tab.mtime：
+   * 用户的意图是「以我的内容为准」，后续保存必须能写下去；
+   * 若仍保留旧 mtime，后端冲突检测会拒绝写入，人就被卡死了。
    */
   async function promptExternalChange(id: number): Promise<void> {
     const tab = tabById(id);
@@ -757,12 +767,27 @@ export const useEditorStore = defineStore('editor', () => {
         danger: tab.dirty, // 有未保存修改时重载会丢弃，标红警示
       });
       if (reload) {
-        await reloadFile(tab.path);
+        // 重载可能失败（文件已被删除、读不了、或被改成超大文件）：
+        // 旧实现不看返回值就弹「已从磁盘重新加载」，用户会看到成功提示
+        // 但内容没变，标记也没清，切一次问一次。
+        const ok = await reloadFile(tab.path);
+        if (ok) {
+          toast(t('reloaded'), 'success');
+        } else {
+          // 重载失败：清掉标记别反复问，并告知用户实际没读到。
+          tab.externalChanged = false;
+          setError(t('reloadFailed'));
+        }
       } else {
-        // 保留当前：清掉标记，避免每次切页都再问一遍。
+        // 保持当前：清标记（不再重复询问），并把磁盘 mtime 记为最新基线——
+        // 否则下次保存带的是加载时的旧 mtime，后端冲突检测会拒绝写入，
+        // 用户被迫要么丢修改重载、要么永远存不进去。
         tab.externalChanged = false;
+        if (tab.diskMtime) {
+          tab.mtime = tab.diskMtime;
+          tab.diskMtime = undefined;
+        }
       }
-      if (reload) toast(t('reloaded'), 'success');
     } finally {
       tab.externalPrompting = false;
     }
