@@ -42,20 +42,10 @@ import AppToast from './components/AppToast.vue';
 
 const store = useEditorStore();
 const showPreview = ref(false);
-/**
- * 编辑器是否可编辑：预览态（showPreview 且 markdown 预览）设为只读，只看渲染；
- * HTML 预览走 iframe（非编辑器），不受此影响。同时尊重 tab.readonly。
- */
-function editorEditable(tab: { readonly: boolean; previewKind: 'markdown' | 'html' | null } | undefined | null): boolean {
-  if (!tab) return true;
-  if (tab.readonly) return false;
-  if (showPreview.value && tab.previewKind === 'markdown') return false;
-  return true;
-}
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.85';
+const appVersion = '0.5.86';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -201,7 +191,7 @@ function mountEditor(tab: { id: number; content: string; path: string; name: str
       search({ createPanel: createSearchPanel() }),
       ...languageExtensionFor(tab.path || tab.name),
       themeCompartment.of(cmThemeFor(theme.value)),
-      editableCompartment.of(EditorView.editable.of(editorEditable(tab))),
+      editableCompartment.of(EditorView.editable.of(!tab.readonly)),
       indentCompartment.of(buildIndentExts()),
       fontCompartment.of(buildFontExts()),
       wrapCompartment.of(buildWrapExts()),
@@ -242,24 +232,15 @@ watch(
     if (tab.id !== mountedId) {
       mountEditor(tab);
     } else if (view) {
-      // 已挂载的编辑器切到只读/可写/预览态标签时，同步可编辑性。
+      // 已挂载的编辑器切到只读/可写标签时，同步可编辑性。
       view.dispatch({
-        effects: editableCompartment.reconfigure(EditorView.editable.of(editorEditable(tab))),
+        effects: editableCompartment.reconfigure(EditorView.editable.of(!tab.readonly)),
       });
     }
     // 切页签回到自动预览默认；眼/笔可再手动覆盖当前页。
     showPreview.value = store.autoPreview && tab.previewKind !== null;
   },
 );
-
-// 预览态切换 / 切页签时同步 Markdown 编辑器可编辑性（预览态只读）。
-watch([showPreview, () => store.activeTab?.previewKind], () => {
-  const tab = store.activeTab;
-  if (!view || !tab || tab.id !== mountedId) return;
-  view.dispatch({
-    effects: editableCompartment.reconfigure(EditorView.editable.of(editorEditable(tab))),
-  });
-});
 
 // 编辑器内容被 store 更新（如外部变更重载）时同步到 CodeMirror。
 // 用户输入不会走到这里（输入只改 doc，不改 store，除非 markDirty）。
@@ -525,6 +506,9 @@ const editorCtxItems = computed(() => {
   ];
 });
 
+/** 是否正在显示预览（预览态：整个编辑区被预览替换）。 */
+const previewShowing = computed(() => showPreview.value && !!store.activeTab?.previewKind);
+
 onMounted(async () => {
   // 初始化主题（跟随宿主深/浅色）；失败保持默认暗色，不阻塞编辑器。
   void initTheme();
@@ -558,7 +542,8 @@ onMounted(async () => {
         <TabBar v-if="store.tabs.length" />
         <div class="editor-area">
           <!-- 编辑区右键：自定义 复制/剪切/粘贴/全选（空白页走浏览器默认菜单） -->
-          <div class="editor-pane" @contextmenu="onEditorContextmenu">
+          <!-- 预览态：整个编辑区被预览替换（editor-pane 隐藏），点铅笔回到源码 -->
+          <div class="editor-pane" v-show="!previewShowing" @contextmenu="onEditorContextmenu">
             <div id="editor-host" class="editor-host" />
             <!-- 空白页：双击新建页签（pointer-events 仅开在占位层，双击热区=整块空白） -->
             <div v-if="!store.activeTab" class="placeholder" @dblclick="store.newUntitled()">
@@ -567,7 +552,8 @@ onMounted(async () => {
               <div class="placeholder-hint">{{ t('placeholderDblClick') }}</div>
             </div>
           </div>
-          <aside v-if="showPreview && store.activeTab?.previewKind" class="preview-pane">
+          <!-- 预览态：填满整个编辑区（editor-pane 已 v-show 隐藏） -->
+          <div v-if="showPreview && store.activeTab?.previewKind" class="preview-full">
             <div class="preview-bar">
               <span class="preview-bar-title">{{ store.activeTab.previewKind === 'markdown' ? t('previewMd') : t('previewHtml') }}</span>
               <button class="preview-close" :title="t('closePreview')" @click="showPreview = false">✕</button>
@@ -576,7 +562,7 @@ onMounted(async () => {
               :kind="store.activeTab.previewKind"
               :content="store.activeTab.content"
             />
-          </aside>
+          </div>
           <!-- 眼睛/铅笔：预览/编辑切换（仅可预览类型 md/htm/html 显示），绝对定位于编辑区右上角 -->
           <button
             v-if="store.activeTab?.previewKind"
