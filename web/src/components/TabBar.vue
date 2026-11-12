@@ -368,7 +368,9 @@ watch(() => [store.activeId, store.tabs.length], async () => {
           @contextmenu.prevent="onTabContextmenu($event, tab.id)"
         >
           <span class="tab-name">{{ tab.name }}</span>
-          <span v-if="tab.dirty" class="tab-dirty" :title="t('unsaved')">●</span>
+          <!-- 恢复会话时后台补加载的标签：名称降透明度表示内容未就绪 -->
+          <span v-if="tab.loading" class="tab-loading" :title="t('loading')" />
+          <span v-else-if="tab.dirty" class="tab-dirty" :title="t('unsaved')">●</span>
           <span class="tab-close" :title="t('close')" @click.stop="store.closeTab(tab.id)">×</span>
         </div>
       </div>

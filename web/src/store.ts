@@ -182,6 +182,13 @@ export const useEditorStore = defineStore('editor', () => {
   /** 后端是否可达（null=未探测）。initPrefs 时探测，供诊断/提示用。 */
   const prefsBackendOk = ref<boolean | null>(null);
 
+  /**
+   * 启动恢复中（booting）。true 期间界面不渲染空白页欢迎语——
+   * 否则会话恢复慢时用户会先看到「欢迎页闪一下」再看到标签冒出来。
+   * initPrefs 结束（无论成功与否）置 false。
+   */
+  const booting = ref<boolean>(true);
+
   /** 启动时是否成功读到后端偏好（false = 服务端可能有数据但没读到，写前需补读）。 */
   let prefsLoaded = false;
 
@@ -354,6 +361,66 @@ export const useEditorStore = defineStore('editor', () => {
     return tab;
   }
 
+  /**
+   * addTabStub 只建占位标签（不发请求、不改 activeId）。
+   * 会话恢复用：先把全部标签一次性铺出来，界面立刻是「标签栏 + 骨架」，
+   * 而不是空白页 → 空白页 → 一个个蹦出来。
+   * 已存在同路径标签则直接返回它（不重复建）。
+   */
+  function addTabStub(path: string): Tab {
+    const existing = tabs.value.find(tb => tb.path === path);
+    if (existing) return existing;
+    const draft: Tab = {
+      id: ++tabSeq, path, name: fileNameOf(path), content: '', mtime: '',
+      dirty: false, isMarkdown: isMd(path), previewKind: previewKindOf(path), loading: true, readonly: false,
+      hasBom: false,
+      encoding: 'utf-8',
+      lineEnding: '',
+      indent: 'spaces',
+      indentWidth: 4,
+    };
+    tabs.value.push(draft);
+    // 返回响应式代理（原始 draft 不经过代理，改它对模板不可见）。
+    return tabById(draft.id)!;
+  }
+
+  /**
+   * fillTab 拉取文件内容填入已存在的占位标签（不建标签、不改 activeId）。
+   * 失败时移除该标签并按需报错；silent=true 用于后台补加载——
+   * 恢复会话里有文件已被删除/超限时，不该弹一堆 toast 打断启动。
+   */
+  async function fillTab(tab: Tab, silent = false): Promise<boolean> {
+    try {
+      const { file } = await readFile(tab.path);
+      tab.content = file.content;
+      tab.mtime = file.mtime;
+      tab.loading = false;
+      tab.readonly = false;
+      tab.hasBom = file.encoding === 'utf-8-bom';
+      tab.encoding = file.encoding ?? 'utf-8';
+      tab.lineEnding = file.lineEnding ?? '';
+      const det = detectIndent(file.content);
+      tab.indent = det.style;
+      tab.indentWidth = det.width;
+      if (activeId.value === tab.id) status.value = `${t('opened')} ${file.displayPath ?? file.path}`;
+      return true;
+    } catch (e) {
+      const idx = tabs.value.findIndex(tb => tb.id === tab.id);
+      if (idx >= 0) tabs.value.splice(idx, 1);
+      if (activeId.value === tab.id) activeId.value = tabs.value[Math.min(idx, tabs.value.length - 1)]?.id ?? 0;
+      if (!silent) {
+        const msg = (e as Error).message.includes('UTF-8') ? t('notUtf8') : (e as Error).message;
+        setError(`${t('openFailed')}: ${msg}`);
+        // 状态栏只在有活动标签时渲染（无标签即空白页），此时 error 无处显示。
+        // 打开失败又恰好清空了标签集（空白页/唯一标签场景）时用户看不到任何反馈，
+        // 故同步弹一条 toast——它挂在全局层，与是否有标签无关。
+        // 时长放宽到 6.5s：文件过大这类提示文字较长，默认 3.2s 读不完。
+        toast(`${t('openFailed')}: ${msg}`, 'error', 6500);
+      }
+      return false;
+    }
+  }
+
   /** 打开文件（已打开则激活；标签数达上限时拒绝并提示）。 */
   async function openFile(path: string) {
     setError('');
@@ -366,45 +433,9 @@ export const useEditorStore = defineStore('editor', () => {
       toast(t('tabLimitReached').replace('{n}', String(MAX_TABS)), 'error');
       return;
     }
-    const draft: Tab = {
-      id: ++tabSeq, path, name: fileNameOf(path), content: '', mtime: '',
-      dirty: false, isMarkdown: isMd(path), previewKind: previewKindOf(path), loading: true, readonly: false,
-      hasBom: false,
-      encoding: 'utf-8',
-      lineEnding: '',
-      indent: 'spaces',
-      indentWidth: 4,
-    };
-    // 先 push 占位、再用 tabs 数组里的响应式代理更新字段。
-    // 关键：直接改 draft（原始对象）不会经过 Vue 的响应式代理，模板与
-    // App.vue 的 watch 全都感知不到（真机上表现为「标签在、内容永远空」）。
-    tabs.value.push(draft);
-    const tab = tabById(draft.id)!;
+    const tab = addTabStub(path);
     activeId.value = tab.id;
-    try {
-      const { file } = await readFile(path);
-      tab.content = file.content;
-      tab.mtime = file.mtime;
-      tab.loading = false;
-      tab.readonly = false;
-      tab.hasBom = file.encoding === 'utf-8-bom';
-      tab.encoding = file.encoding ?? 'utf-8';
-      tab.lineEnding = file.lineEnding ?? '';
-      const det = detectIndent(file.content);
-      tab.indent = det.style;
-      tab.indentWidth = det.width;
-      status.value = `${t('opened')} ${file.displayPath ?? file.path}`;
-    } catch (e) {
-      tabs.value = tabs.value.filter(tb => tb.id !== tab.id);
-      if (activeId.value === tab.id) activeId.value = tabs.value[tabs.value.length - 1]?.id ?? 0;
-      const msg = (e as Error).message.includes('UTF-8') ? t('notUtf8') : (e as Error).message;
-      setError(`${t('openFailed')}: ${msg}`);
-      // 状态栏只在有活动标签时渲染（无标签即空白页），此时 error 无处显示。
-      // 打开失败又恰好清空了标签集（空白页/唯一标签场景）时用户看不到任何反馈，
-      // 故同步弹一条 toast——它挂在全局层，与是否有标签无关。
-      // 时长放宽到 6.5s：文件过大这类提示文字较长，默认 3.2s 读不完。
-      toast(`${t('openFailed')}: ${msg}`, 'error', 6500);
-    }
+    await fillTab(tab);
     // 打开/打开失败都会改变标签集 → 即时持久化会话（restoreGuard 期间跳过）。
     persistSession();
   }
@@ -743,29 +774,49 @@ export const useEditorStore = defineStore('editor', () => {
 
     // 恢复会话：后端 session（唯一来源）。旧版本会话可能超过标签上限：
     // 按上限裁剪恢复，超限时回写一次收敛持久化体积（否则 prefs 持续超限）。
-    const sess = (prefs[SESSION_KEY] ?? null) as
-      | { [SESSION_TABS]?: string[]; [SESSION_ACTIVE]?: string }
-      | null;
-    const allPaths = Array.isArray(sess?.[SESSION_TABS]) ? sess![SESSION_TABS]! : [];
-    const paths = allPaths.slice(0, MAX_TABS);
-    if (!paths.length) return { hasSession: false, activePath: '' };
-
-    restoreGuard = true;
-    let want = sess?.[SESSION_ACTIVE] ?? '';
+    // booting 必须无条件复位：任何异常都不该让界面永久停在「加载中」。
     try {
-      for (const p of paths) {
-        // 逐个 await：openFile 内部 push 占位再异步填内容，串行保证顺序与 activeId 稳定。
-        await openFile(p);
+      const sess = (prefs[SESSION_KEY] ?? null) as
+        | { [SESSION_TABS]?: string[]; [SESSION_ACTIVE]?: string }
+        | null;
+      const allPaths = Array.isArray(sess?.[SESSION_TABS]) ? sess![SESSION_TABS]! : [];
+      const paths = allPaths.slice(0, MAX_TABS);
+      if (!paths.length) return { hasSession: false, activePath: '' };
+
+      restoreGuard = true;
+      let want = sess?.[SESSION_ACTIVE] ?? '';
+      if (!paths.includes(want)) want = paths[paths.length - 1];
+      try {
+        // 阶段一：一次性铺出全部占位标签（零请求、零编辑器重挂）。
+        // 关键：绝不在这里逐个改 activeId——那会让 watch(activeId) 把 CodeMirror
+        // 反复 destroy/new 一遍，N 个标签就重建 N 次（旧实现正是如此，表现为
+        // 「挨个加载」的卡顿感）。
+        const stubs = paths.map(p => addTabStub(p));
+        // 先定位活动标签：界面立刻落到用户上次停留的页，而不是最左/最右。
+        const target = stubs.find(s => s.path === want) ?? stubs[stubs.length - 1];
+        if (target) activeId.value = target.id;
+
+        // 阶段二：只等活动标签加载完（用户真正要看的那一个），其余后台补。
+        // 这样首屏可见时间 ≈ 1 次文件读取，而不是 N 次串行往返。
+        if (target) await fillTab(target, true);
+
+        // 阶段三：后台并发补加载剩余标签（不 await，不阻塞启动）。
+        // 失败静默移除（文件可能已被删除/超限），不弹一堆 toast 打断启动。
+        const rest = stubs.filter(s => s !== target);
+        void Promise.all(rest.map(s => fillTab(s, true))).then(() => {
+          // 全部补完后再落盘一次：以「实际还能打开」的标签收敛会话，
+          // 避免下次启动继续尝试那些已经打不开的路径。
+          // 此时 restoreGuard 已在 finally 里复位，这次写入是正常持久化。
+          persistSession();
+        });
+      } finally {
+        restoreGuard = false;
       }
-      const target = tabs.value.find(tb => tb.path === want)
-        ?? tabs.value[tabs.value.length - 1];
-      if (target) activeId.value = target.id;
-      else want = '';
+      if (allPaths.length > MAX_TABS) persistSession();
+      return { hasSession: true, activePath: want };
     } finally {
-      restoreGuard = false;
+      booting.value = false;
     }
-    if (allPaths.length > MAX_TABS) persistSession();
-    return { hasSession: true, activePath: want || paths[paths.length - 1] };
   }
 
   /**
@@ -828,6 +879,7 @@ export const useEditorStore = defineStore('editor', () => {
     doSaveAs, closeSaveAs,
     reloadFile, tabById,
     initPrefs, persistSession, prefsBackendOk, resetToDefaults,
+    booting,
   };
 });
 

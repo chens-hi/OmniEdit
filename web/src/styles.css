@@ -227,6 +227,28 @@ body,
   color: #888;
 }
 
+/* 启动恢复中：只显示一个低调的「加载中」，不出现欢迎语（避免一闪而过的空态） */
+.placeholder.booting {
+  cursor: progress;
+}
+
+/* 标签加载中：名称旁的小转圈（后台补加载的页签） */
+.tab-loading {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 1.5px solid var(--fg-muted);
+  border-top-color: transparent;
+  animation: tab-spin 0.8s linear infinite;
+}
+@keyframes tab-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab-loading { animation-duration: 2.4s; }
+}
+
 /* ---------- 预览 ---------- */
 /* 预览态：填满整个编辑区（editor-pane 已 v-show 隐藏），非分栏 */
 .preview-full {

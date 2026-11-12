@@ -44,7 +44,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.6.2';
+const appVersion = '0.6.3';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -274,7 +274,11 @@ watch(
     }
     if (tab.id !== mountedId) {
       flushContent(); // 旧编辑器全文写回快照（非活动标签的数据源，关键点）
-      mountEditor(tab);
+      // 内容还没到就先不挂载：挂一个空 doc 再被内容替换会闪一下空白，
+      // 且对大文件来说是白建一次 EditorView。等 fillTab 填充后由
+      // 下面的 content watch 触发挂载。
+      if (!tab.loading) mountEditor(tab);
+      else if (view) { view.destroy(); view = null; mountedId = 0; }
     } else if (view) {
       // 已挂载的编辑器切到只读/可写标签时，同步可编辑性。
       view.dispatch({
@@ -288,11 +292,20 @@ watch(
 
 // 编辑器内容被 store 更新（如外部变更重载）时同步到 CodeMirror。
 // 用户输入不会走到这里（输入只置 dirty 不改快照；快照由 reload/flush 写入）。
+// 同时监听 loading：恢复占位标签是「先 loading=true，内容到了才置 false」，
+// 只盯 content 会在 content 与 loading 的赋值顺序变化时漏触发。
 watch(
-  () => store.activeTab?.content,
-  (content) => {
+  () => [store.activeTab?.content, store.activeTab?.loading] as const,
+  ([content]) => {
     const tab = store.activeTab;
-    if (!view || !tab || tab.id !== mountedId || content === undefined) return;
+    if (!tab || content === undefined) return;
+    // 尚未挂载（活动标签刚从恢复占位里加载完内容）：现在才建编辑器，
+    // 直接用已就绪的内容初始化，避免空 doc 先闪一下。
+    if (!view || tab.id !== mountedId) {
+      if (tab.loading) return; // 内容仍未到，继续等
+      mountEditor(tab);
+      return;
+    }
     if (view.state.doc.toString() !== content) {
       // 外部变更重载：整体替换文档内容，保留滚动位置。
       // 带 docSync 标记 → updateListener 不计为用户编辑（不点黄点）。
@@ -731,10 +744,15 @@ onMounted(async () => {
           <div class="editor-pane" v-show="!previewShowing" @contextmenu="onEditorContextmenu">
             <div id="editor-host" class="editor-host" />
             <!-- 空白页：双击新建页签（pointer-events 仅开在占位层，双击热区=整块空白） -->
-            <div v-if="!store.activeTab" class="placeholder" @dblclick="store.newUntitled()">
+            <!-- booting 期间不渲染欢迎语：会话恢复慢时避免「欢迎页闪一下→标签冒出」 -->
+            <div v-if="!store.booting && !store.activeTab" class="placeholder" @dblclick="store.newUntitled()">
               <div class="placeholder-title">{{ t('welcomeTitle') }}</div>
               <div class="placeholder-sub">{{ t('welcomeSub') }}</div>
               <div class="placeholder-hint">{{ t('placeholderDblClick') }}</div>
+            </div>
+            <!-- 恢复中：骨架态，不显示任何「空」文案（避免误以为没有文件） -->
+            <div v-else-if="store.booting" class="placeholder booting">
+              <div class="placeholder-hint">{{ t('loading') }}</div>
             </div>
           </div>
           <!-- 预览态：填满整个编辑区（editor-pane 已 v-show 隐藏）；无标题栏，眼/笔按钮切回编辑 -->
