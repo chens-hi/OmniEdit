@@ -33,7 +33,7 @@ async function handleChange(path: string, mtime: string) {
     // 无未保存修改：静默重新加载。
     const ok = await store.reloadFile(path);
     if (ok && path === store.activePath) {
-      store.status = `${t('reloaded')}: ${tab.name}`;
+      store.toast(`${t('reloaded')}: ${tab.name}`, 'success');
     }
     return;
   }

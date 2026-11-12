@@ -127,8 +127,6 @@ export interface Tab {
 export const useEditorStore = defineStore('editor', () => {
   const tabs = ref<Tab[]>([]);
   const activeId = ref<number>(0);
-  const error = ref<string>('');
-  const status = ref<string>(t('ready'));
 
   // ---- 编辑器设置（菜单栏驱动；初值一律 = 默认值，initPrefs 再用后端值覆盖） ----
   const indentMode = ref<IndentMode>(PREF_DEFAULTS.indentMode);
@@ -331,9 +329,15 @@ export const useEditorStore = defineStore('editor', () => {
     return tabs.value.find(tb => tb.id === id);
   }
 
+  /**
+   * setError 报错统一走 toast。
+   * 状态栏只做「文件信息展示」（路径/编码/行数/大小），不再承担任何提示——
+   * 早期 status/error 双通道并存，导致同一件事有时在状态栏、有时在 toast，
+   * 且状态栏在无活动标签（空白页）时整个不渲染，错误会彻底看不见。
+   * 现统一为 toast 单一通道。setError 保留为语义化别名，便于调用点自解释。
+   */
   function setError(msg: string) {
-    error.value = msg;
-    if (msg) status.value = t('error');
+    if (msg) toast(msg, 'error', 6500);
   }
 
   function newUntitled(): Tab | null {
@@ -407,7 +411,6 @@ export const useEditorStore = defineStore('editor', () => {
     try {
       const { file } = await readFile(tab.path);
       applyFile(tab, file);
-      if (activeId.value === tab.id) status.value = `${t('opened')} ${file.displayPath ?? file.path}`;
       return true;
     } catch (e) {
       const idx = tabs.value.findIndex(tb => tb.id === tab.id);
@@ -419,15 +422,12 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   /**
-   * reportOpenError 打开失败的统一提示。
-   * 状态栏只在有活动标签时渲染（无标签即空白页），此时 error 无处显示，
-   * 故同步弹一条 toast——它挂在全局层，与是否有标签无关。
+   * reportOpenError 打开失败的统一提示（单一 toast 通道，见 setError）。
    * 时长 6.5s：文件过大这类提示文字较长，默认 3.2s 读不完。
    */
   function reportOpenError(e: unknown) {
     const msg = (e as Error).message.includes('UTF-8') ? t('notUtf8') : (e as Error).message;
     setError(`${t('openFailed')}: ${msg}`);
-    toast(`${t('openFailed')}: ${msg}`, 'error', 6500);
   }
 
   /**
@@ -439,7 +439,6 @@ export const useEditorStore = defineStore('editor', () => {
    * 标签栏完全不受影响。
    */
   async function openFile(path: string) {
-    setError('');
     const existing = tabs.value.find(tb => tb.path === path);
     if (existing) {
       activeId.value = existing.id;
@@ -466,7 +465,6 @@ export const useEditorStore = defineStore('editor', () => {
     const tab = addTabStub(path);
     applyFile(tab, file);
     activeId.value = tab.id;
-    status.value = `${t('opened')} ${file.displayPath ?? file.path}`;
     persistSession();
   }
 
@@ -524,9 +522,10 @@ export const useEditorStore = defineStore('editor', () => {
 
   /**
    * toast 弹出一条轻提示，duration 毫秒后自动消失（点击卡片可提前关闭）。
-   * 适合「够到了上限」「已还原」这类瞬态反馈；需要持续可见的错误（如保存失败）
-   * 仍走 setError 状态栏。最多同时 4 条，超量移除最旧（其定时器之后触发
-   * dismissToast 对已移除项是空操作，无需跟踪句柄）。
+   * 这是应用**唯一**的提示通道：打开/保存/重新加载/报错全部走这里，
+   * 状态栏只负责展示文件信息，不承担任何提示语义。
+   * 最多同时 4 条，超量移除最旧（其定时器之后触发 dismissToast 对已移除项
+   * 是空操作，无需跟踪句柄）。
    */
   function toast(message: string, type: ToastType = 'info', duration = 3200) {
     const id = ++toastSeq;
@@ -554,7 +553,6 @@ export const useEditorStore = defineStore('editor', () => {
   async function saveTab(id: number): Promise<boolean> {
     const tab = tabById(id);
     if (!tab || tab.readonly) return false;
-    setError('');
     if (!tab.path) {
       activeId.value = tab.id;
       saveAsVisible.value = true;
@@ -565,7 +563,8 @@ export const useEditorStore = defineStore('editor', () => {
       const { mtime } = await writeFile(tab.path, content, tab.mtime, tab.hasBom, tab.encoding);
       tab.mtime = mtime;
       tab.dirty = false;
-      status.value = activeId.value === tab.id ? t('saved') : `${t('saved')} ${tab.name}`;
+      // 保存成功走 toast（含非活动标签的批量保存，标明是哪个文件）。
+      toast(activeId.value === tab.id ? t('saved') : `${t('saved')} ${tab.name}`, 'success');
       return true;
     } catch (e) {
       setError(`${t('saveFailed')}: ${(e as Error).message}`);
@@ -589,7 +588,7 @@ export const useEditorStore = defineStore('editor', () => {
       tab.previewKind = previewKindOf(target);
       tab.mtime = mtime;
       tab.dirty = false;
-      status.value = `${t('saved')} ${target}`;
+      toast(`${t('saved')} ${target}`, 'success');
       // 草稿落盘后成为会话一员（有路径）→ 一次性写回偏好 + 会话
       // （lastSaveDir 也在同一份快照里；不再额外先写一次偏好，避免冗余 PUT）。
       persistSession();
@@ -887,13 +886,12 @@ export const useEditorStore = defineStore('editor', () => {
     // 回到初始界面：一个空白无标题草稿。
     untitledSeq = 0;
     newUntitled();
-    status.value = t('ready');
     toast(t('resetDone'), 'success');
     return ok;
   }
 
   return {
-    tabs, activeId, activeTab, activePath, error, status,
+    tabs, activeId, activeTab, activePath,
     saveAsVisible, lastSaveDir,
     confirmDialog, confirm, settleConfirm,
     batchClose, requestCloseMany, settleBatchClose,

@@ -448,10 +448,10 @@ body,
   background: var(--border);
 }
 
+/* 状态栏不再承载错误文案（提示统一走 toast），此样式保留给内联错误场景 */
 .error {
   color: var(--error);
 }
-
 /* ---------- 模态内容（关于，配合 AppModal 插槽） ---------- */
 .dim { color: var(--fg-muted); margin-top: 4px; font-size: 12px; }
 

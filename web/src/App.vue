@@ -44,7 +44,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.6.4';
+const appVersion = '0.6.5';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -789,9 +789,9 @@ onMounted(async () => {
     </div>
 
     <!-- 无活动页签（空白页）时整个状态栏隐藏，不显示「未打开文件」 -->
+    <!-- 状态栏只做文件信息展示（路径/编码/行尾/行列/大小）；任何提示一律走 toast -->
     <footer v-if="store.activeTab" class="statusbar">
       <span class="sb-path" :title="store.activePath">{{ store.activePath }}</span>
-      <span v-if="store.error" class="error">{{ store.error }}</span>
       <div v-if="store.activeTab" class="sb-right">
         <span class="sbi" :title="t('indentHint')">{{ indentLabel }}</span>
         <span class="sbsep" />
