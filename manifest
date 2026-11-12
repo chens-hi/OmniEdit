@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.6.1
+version=0.6.2
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.6.1: 修复设置改动（字号/字体/主题/换行/缩进/自动预览等）会清空最近打开会话的问题；偏好与会话改为同源整体写回并串行化，避免并发覆盖；启动读取失败时不再用空会话覆盖服务端数据
+changelog=0.6.2: 修复打开失败提示在空白页/唯一标签场景下完全不显示的问题（错误改由 toast 弹出，不依赖状态栏）

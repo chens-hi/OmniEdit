@@ -6,6 +6,7 @@
 #   over-preview.html 1.5MB  → 同上（HTML 端）
 #   2mb.txt / 5mb.log / 9.5mb.txt → ≤10MB：打开/编辑/保存/搜索全流程
 #   11mb.log          11MB   → 打开提示「文件过大（上限 10 MB）」
+#   huge-50mb.log     50MB   → 远超上限，打开即提示错误（不进入编辑器）
 # 内容带行号与 NEEDLE-xxxxxx 锚点，便于验证搜索与滚动。
 
 $ErrorActionPreference = 'Stop'
@@ -39,3 +40,22 @@ New-TextFile '2mb.txt'   2   "# 2MB 纯文本`n预期：直接打开，编辑/�
 New-TextFile '5mb.log'   5   "# 5MB 日志`n预期：直接打开，编辑/保存/查找流畅。`n`n" "`n--- END ---`n"
 New-TextFile '9.5mb.txt' 9.5 "# 9.5MB 纯文本（接近 10MB 上限）`n预期：仍可直接打开、可编辑可保存。`n`n" "`n--- END ---`n"
 New-TextFile '11mb.log'  11  "# 11MB 日志（超过 10MB 上限）`n预期：打开提示「文件过大：11.x MB（上限 10 MB），无法打开」。`n`n" "`n--- END ---`n"
+
+# 50MB 超大文件：验证「远超上限」时的提示（上限 10MB，此文件是 5 倍）。
+# 用 StreamWriter 流式写，避免 StringBuilder 持有 50MB 字符串（峰值内存翻倍）。
+function New-HugeFile([string]$name, [double]$targetMB, [string]$header, [string]$footer) {
+  $path = Join-Path $dir $name
+  $line = 'LINE {0:D8} ··· NEEDLE-HUGE-000001 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' + "`n"
+  $lineBytes = [System.Text.Encoding]::UTF8.GetByteCount(($line -f 1))
+  $total = [int]($targetMB * 1MB / $lineBytes)
+  $sw = [System.IO.StreamWriter]::new($path, $false, [System.Text.UTF8Encoding]::new($false), 65536)
+  try {
+    $sw.Write($header)
+    for ($i = 1; $i -le $total; $i++) { $sw.Write(($line -f $i)) }
+    $sw.Write($footer)
+  } finally { $sw.Dispose() }
+  $f = Get-Item $path
+  '{0,-18} {1,8:N1} MB' -f $f.Name, ($f.Length / 1MB)
+}
+
+New-HugeFile 'huge-50mb.log' 50 "# 50MB 超大日志（远超 10MB 打开上限）`n# 预期：打开即提示「文件过大：50.0 MB（上限 10 MB），无法打开」，不进入编辑器。`n`n" "`n--- END ---`n"

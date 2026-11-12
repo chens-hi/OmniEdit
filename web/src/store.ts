@@ -397,7 +397,13 @@ export const useEditorStore = defineStore('editor', () => {
     } catch (e) {
       tabs.value = tabs.value.filter(tb => tb.id !== tab.id);
       if (activeId.value === tab.id) activeId.value = tabs.value[tabs.value.length - 1]?.id ?? 0;
-      setError(`${t('openFailed')}: ${(e as Error).message.includes('UTF-8') ? t('notUtf8') : (e as Error).message}`);
+      const msg = (e as Error).message.includes('UTF-8') ? t('notUtf8') : (e as Error).message;
+      setError(`${t('openFailed')}: ${msg}`);
+      // 状态栏只在有活动标签时渲染（无标签即空白页），此时 error 无处显示。
+      // 打开失败又恰好清空了标签集（空白页/唯一标签场景）时用户看不到任何反馈，
+      // 故同步弹一条 toast——它挂在全局层，与是否有标签无关。
+      // 时长放宽到 6.5s：文件过大这类提示文字较长，默认 3.2s 读不完。
+      toast(`${t('openFailed')}: ${msg}`, 'error', 6500);
     }
     // 打开/打开失败都会改变标签集 → 即时持久化会话（restoreGuard 期间跳过）。
     persistSession();
