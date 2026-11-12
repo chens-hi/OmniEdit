@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.6.12
+version=0.6.13
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.6.12: 页签最小宽度 56px→88px（名字可显示约 6 字）；桌面端关闭号改为仅活动/悬停时显示，不占横向空间且不引起重排；触摸端保持常驻可点
+changelog=0.6.13: 触摸屏关闭号与桌面统一——仅激活页签显示，点按其他页签会激活并显示（不再常驻占位）

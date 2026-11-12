@@ -550,39 +550,35 @@ html[data-theme="light"] .tab:hover { background: rgba(0, 0, 0, 0.05); }
    竖条也随之下移，从蓝线下方起（否则会压在蓝线上），底部仍与页签底齐平。 */
 .tab.active .tab-bar { top: 2px; }
 
-/* 关闭号：桌面端绝对定位悬浮在页签右端，不占 flex 横向空间——
-   否则「悬停才显示」会让页签宽度随鼠标移动而跳动（display 切换触发重排）。
-   触摸端（无 hover）改为常驻的流内元素，保证始终可点。 */
+/* 关闭号：绝对定位悬浮在页签右端，不占 flex 横向空间。
+   显示条件统一为「激活 或 hover」——桌面靠鼠标 hover，触摸屏靠浏览器在点按
+   时模拟的 hover（点按页签会同时激活它，因此触摸端同样能关）。
+   不用 display 切换来省空间：那会触发重排，页签宽度随鼠标移动跳动；
+   绝对定位 + 名字右侧预留 padding 可以做到宽度恒定。 */
 .tab-close {
-  flex-shrink: 0;
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
   border-radius: 3px;
   padding: 0 4px;
   color: var(--fg-muted);
+  /* 实底遮住身后的文件名：inherit 拿到的是 transparent，文字会透出来 */
+  background: var(--toolbar-bg);
+  display: none;
 }
-@media (hover: hover) and (pointer: fine) {
-  .tab-close {
-    position: absolute;
-    right: 4px;
-    top: 50%;
-    transform: translateY(-50%);
-    /* 实底遮住身后的文件名：inherit 拿到的是 transparent，文字会透出来 */
-    background: var(--toolbar-bg);
-    display: none;
-  }
-  /* 活动页签底色是 --bg（不是 toolbar-bg），需单独覆盖；边框已由 padding-top 补偿 */
-  .tab.active .tab-close {
-    display: block;
-    background: var(--bg);
-    top: calc(50% + 1px);
-  }
-  .tab:hover .tab-close { display: block; background: var(--toolbar-bg); }
-  .tab.active:hover .tab-close { background: var(--bg); }
-  /* 名字右侧留出关闭号宽度，避免悬停时底部字符被遮住 */
-  .tab-name { padding-right: 18px; }
-  /* 悬停到关闭号本身：给个可见的 hover 反馈 */
-  .tab-close:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 14%, transparent) !important; }
+/* 活动页签底色是 --bg（不是 toolbar-bg），需单独覆盖；边框已由 padding-top 补偿 */
+.tab.active .tab-close {
+  display: block;
+  background: var(--bg);
+  top: calc(50% + 1px);
 }
-.tab-close:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); color: var(--fg); }
+.tab:hover .tab-close { display: block; background: var(--toolbar-bg); }
+.tab.active:hover .tab-close { background: var(--bg); }
+/* 名字右侧留出关闭号宽度，避免悬停时底部字符被遮住 */
+.tab-name { padding-right: 18px; }
+/* 悬停到关闭号本身：给个可见的 hover 反馈 */
+.tab-close:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 14%, transparent) !important; }
 .tab-new {
   flex-shrink: 0;
   border: none;
