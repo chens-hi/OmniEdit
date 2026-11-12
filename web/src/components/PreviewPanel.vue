@@ -2,25 +2,22 @@
 import { computed, ref, watch, onBeforeUnmount } from 'vue';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
-import { theme } from '../theme';
 
 /**
- * 统一预览面板（多后缀共用渲染模板）：
+ * 统一预览面板（多后缀共用渲染模板），桌面/移动同一渲染管线：
  *   - markdown：marked 解析 + DOMPurify 净化（md/markdown 共用）。
- *   - html：iframe 用 blob URL 作为 src 渲染（htm/html 共用）。桌面/移动统一，
- *     比 srcdoc 兼容性好（移动 webview 对 srcdoc+sandbox 支持差会空白）。
+ *   - html：DOMPurify 直接净化后内联渲染（htm/html 共用）。
+ *     弃用 iframe：移动 webview 对 srcdoc / blob URL 均渲染空白；内联路径与
+ *     markdown 同源，实测在移动 webview 正常。
+ *     已知取舍：html 内 <style> 被 DOMPurify 保留并生效；但作用于
+ *     html/body 的选择器不生效（内容注入 div）；<script> 一律净化剥离；
+ *     相对路径资源（图片等）无法解析——与之前 iframe 行为一致。
  *
- * 性能：
- *   - 预览独立防抖 250ms（debounced ref），编辑器 CodeMirror 同步即时不防抖，
- *     预览停止输入 250ms 后才重渲染，避免逐键 parse+净化卡顿。
- *   - html 内容/主题变化时重建 blob URL 并 revoke 旧的，防抖降低频率、避免内存泄漏。
- *
- * 主题：md 走 CSS 变量天然适配；html blob 文档内注入跟随主题的基础样式（theme ref 驱动）。
+ * 性能：同页签编辑防抖 250ms；切页签立即同步新内容（无残留闪烁）。
  */
 const props = defineProps<{ tabId: number; kind: 'markdown' | 'html'; content: string }>();
 
-// 预览内容（防抖）：同一页签内编辑 → 停止输入 250ms 后更新；
-// 切页签 → 立即重置为新页签内容（不等防抖，避免残留上一页内容闪烁）。
+// 预览内容（防抖）：同页签编辑 → 停止输入 250ms 后更新；切页签 → 立即同步。
 const debounced = ref(props.content);
 let timer: number | undefined;
 watch(() => props.content, (v) => {
@@ -32,64 +29,34 @@ watch(() => props.tabId, () => {
   window.clearTimeout(timer);
   debounced.value = props.content;
 });
-onBeforeUnmount(() => {
-  window.clearTimeout(timer);
-});
+onBeforeUnmount(() => window.clearTimeout(timer));
 
-// markdown：解析 + 净化（防脚本注入）。
-const mdHtml = computed(() => {
-  const raw = marked.parse(debounced.value ?? '', { async: false, gfm: true, breaks: true });
-  return DOMPurify.sanitize(raw as string);
-});
-
-// html：包成完整文档 + 注入跟随主题的基础样式。
-const htmlDoc = computed(() => {
-  const light = theme.value === 'light';
-  const bg = light ? '#ffffff' : '#1e1e1e';
-  const fg = light ? '#24292e' : '#d4d4d4';
-  const link = light ? '#0969da' : '#4a9eff';
-  const base = `<style>body{margin:0;padding:16px 20px;background:${bg};color:${fg};`
-    + `font-family:-apple-system,'Segoe UI','Microsoft YaHei',sans-serif;line-height:1.6;font-size:14px}`
-    + `a{color:${link}}</style>`;
-  return `<!DOCTYPE html><html><head><meta charset="utf-8">${base}</head><body>${debounced.value ?? ''}</body></html>`;
-});
-
-// html 预览用 blob URL 作为 iframe src（比 srcdoc 兼容性好，移动 webview 也能渲染）。
-// 内容/主题变化时重建 blob URL 并 revoke 旧的，避免内存泄漏。
-const blobUrl = ref<string>('');
-let lastBlobUrl: string | null = null;
-watch(
-  [htmlDoc, () => props.kind],
-  ([doc, kind]) => {
-    if (kind !== 'html') return;
-    if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
-    const blob = new Blob([doc], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    blobUrl.value = url;
-    lastBlobUrl = url;
-  },
-  { immediate: true },
-);
-onBeforeUnmount(() => {
-  if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
+// 渲染输出：markdown 解析后净化；html 直接净化。
+const rendered = computed(() => {
+  const src = debounced.value ?? '';
+  if (props.kind === 'markdown') {
+    const raw = marked.parse(src, { async: false, gfm: true, breaks: true });
+    return DOMPurify.sanitize(raw as string);
+  }
+  return DOMPurify.sanitize(src);
 });
 </script>
 
 <template>
-  <div v-if="kind === 'markdown'" class="pv-md" v-html="mdHtml" />
-  <iframe v-else class="pv-html" :src="blobUrl" title="preview" />
+  <div class="pv-doc" :class="kind === 'markdown' ? 'pv-md' : 'pv-html'" v-html="rendered" />
 </template>
 
 <style scoped>
-/* markdown 预览（在应用 DOM 内，走 CSS 变量，天然适配主题） */
-.pv-md {
+.pv-doc {
   height: 100%;
   overflow-y: auto;
   padding: 16px 20px;
   color: var(--fg);
+  background: var(--bg);
   line-height: 1.6;
   font-size: 14px;
 }
+/* markdown 预览排版（走 CSS 变量，天然适配主题） */
 .pv-md :deep(h1),
 .pv-md :deep(h2),
 .pv-md :deep(h3) {
@@ -120,12 +87,13 @@ onBeforeUnmount(() => {
   padding-left: 12px;
   color: var(--fg-muted);
 }
-/* html 预览：iframe 填满预览面板 */
-.pv-html {
-  display: block;
-  width: 100%;
-  height: 100%;
-  border: none;
-  background: var(--bg);
+/* html 预览：排版交给文档自带样式；仅做溢出防护与基础可读性兜底 */
+.pv-html :deep(img),
+.pv-html :deep(svg),
+.pv-html :deep(video) {
+  max-width: 100%;
+  height: auto;
 }
+.pv-html :deep(table) { border-collapse: collapse; }
+.pv-html :deep(a) { color: var(--accent); }
 </style>
