@@ -33,13 +33,16 @@ function onTabContextmenu(e: MouseEvent, id: number) {
 
 // 触摸设备的长按菜单与拖动排序统一由下方「触摸手势」块处理（Pointer 手势）。
 
-// ---- 页签状态点 ----
-// 设计：只占一个圆点位。单一状态=纯色实心圆；多状态并存时按 n 等分扇形上色
-// （conic-gradient 的硬分界），一眼看出「这页有几种待处理状态」。
-// 比堆多个图标省地方——窄屏标签本来就没多少宽度。
+// ---- 页签状态指示：左缘竖条 ----
+// 设计：贴在页签左缘的 3px 竖条，纵向分段表示状态。
+//   - 零横向占用：窄屏页签最小宽度 56px，横向每一点都宝贵；
+//   - 整条边染色比 8px 圆点更容易被余光捕捉；
+//   - 与活动页签的顶部蓝线不冲突（一个在顶、一个在左）。
+// 单一状态=纯色整条；多状态=按 n 等分纵向切段（硬分界，无渐变过渡），
+// 与「一个圆点按 1/n 分扇形」同一套规则，只是换了方向。
 // 状态色取自主题变量：黄=未保存，蓝=磁盘有更新。
 
-/** 状态定义：顺序即扇区顺序（先黄后蓝，与 VS Code 的脏标记语义对齐）。 */
+/** 状态定义：顺序即分段顺序（先黄后蓝，与 VS Code 的脏标记语义对齐）。 */
 const STATUS = {
   dirty: { color: 'var(--dot-dirty)', label: () => t('unsaved') },
   disk: { color: 'var(--dot-disk)', label: () => t('diskChanged') },
@@ -48,8 +51,8 @@ const STATUS = {
 type StatusKey = keyof typeof STATUS;
 
 /**
- * tabStatus 计算某页签的状态点样式与提示。
- * count=0 表示无状态（模板据此不渲染圆点）。
+ * tabStatus 计算某页签左缘竖条的样式与提示。
+ * count=0 表示无状态（模板据此不渲染竖条）。
  */
 function tabStatus(tab: { dirty: boolean; externalChanged?: boolean }) {
   const keys: StatusKey[] = [];
@@ -58,20 +61,20 @@ function tabStatus(tab: { dirty: boolean; externalChanged?: boolean }) {
   if (!keys.length) return { count: 0, style: {}, title: '' };
   const n = keys.length;
   if (n === 1) {
-    // 单状态：纯色圆点（比 conic-gradient 更省合成层，视觉也更干净）
+    // 单状态：纯色整条（不用 gradient，省一个合成层）
     return {
       count: 1,
       style: { background: STATUS[keys[0]].color },
       title: STATUS[keys[0]].label(),
     };
   }
-  // 多状态：等分扇形。每段 [i/n, (i+1)/n] 用该状态色，边界硬切（无渐变过渡）。
+  // 多状态：纵向等分。每段 [i/n, (i+1)/n] 用该状态色，边界硬切。
   const stops = keys
     .map((k, i) => `${STATUS[k].color} ${(i * 100) / n}% ${((i + 1) * 100) / n}%`)
     .join(', ');
   return {
     count: n,
-    style: { background: `conic-gradient(${stops})` },
+    style: { background: `linear-gradient(to bottom, ${stops})` },
     title: keys.map(k => STATUS[k].label()).join(' · '),
   };
 }
@@ -410,20 +413,16 @@ watch(() => [store.activeId, store.tabs.length], async () => {
           @pointerdown="onTabPointerDown($event, tab.id)"
           @contextmenu.prevent="onTabContextmenu($event, tab.id)"
         >
-          <span class="tab-name">{{ tab.name }}</span>
-          <!-- 状态点：单状态=纯色圆点；多状态=按 n 等分扇形上色（conic-gradient）。
-               加载中优先（转圈替代圆点，表示内容未就绪）。 -->
+          <!-- 状态竖条：贴左缘绝对定位，不占 flex 横向空间 -->
           <span
-            v-if="tab.loading"
-            class="tab-loading"
-            :title="t('loading')"
-          />
-          <span
-            v-else-if="tabStatus(tab).count"
-            class="tab-dot"
+            v-if="tabStatus(tab).count"
+            class="tab-bar"
             :style="tabStatus(tab).style"
             :title="tabStatus(tab).title"
           />
+          <span class="tab-name">{{ tab.name }}</span>
+          <!-- 加载中：名字旁转圈（内容未就绪），优先级高于状态竖条 -->
+          <span v-if="tab.loading" class="tab-loading" :title="t('loading')" />
           <span class="tab-close" :title="t('close')" @click.stop="store.closeTab(tab.id)">×</span>
         </div>
       </div>
@@ -489,7 +488,8 @@ watch(() => [store.activeId, store.tabs.length], async () => {
   flex: 0 1 auto;      /* 允许收缩：多标签按比例压缩塞满容器 */
   min-width: 56px;     /* 收缩下限；全部压到此宽度仍放不下才滚动 */
   max-width: 200px;
-  padding: 6px 8px;
+  /* 左侧 11px = 常规 8px 内距 + 3px 状态竖条，避免文字贴边 */
+  padding: 6px 8px 6px 11px;
   border-right: 1px solid var(--border);
   cursor: pointer; /* 平时正常指针；握手光标只在拖动中显示（.tabs.is-dragging） */
   white-space: nowrap;
@@ -535,15 +535,20 @@ html[data-theme="light"] .tab:hover { background: rgba(0, 0, 0, 0.05); }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* 页签状态点：一个圆形点位承载全部状态。
-   单状态由 JS 给纯色 background；多状态用 conic-gradient 等分扇形。
-   尺寸/圆角在这里固定，颜色一律来自 JS（避免两处硬编码）。 */
-.tab-dot {
-  flex-shrink: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+/* 页签状态竖条：贴左缘 3px，纵向分段表示状态（颜色由 JS 给）。
+   绝对定位 → 不占 flex 横向空间；z-index 高于页签背景但低于关闭按钮。 */
+.tab-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  pointer-events: none;  /* 纯视觉，不拦截点按/拖拽命中 */
+  z-index: 1;
 }
+/* 活动页签顶部有 2px 蓝线（border-top），其内容区整体下移 2px。
+   竖条也随之下移，从蓝线下方起（否则会压在蓝线上），底部仍与页签底齐平。 */
+.tab.active .tab-bar { top: 2px; }
 .tab-close {
   flex-shrink: 0;
   border-radius: 3px;
