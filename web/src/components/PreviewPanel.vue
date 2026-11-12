@@ -48,7 +48,7 @@ const htmlDoc = computed(() => {
 
 <template>
   <div v-if="kind === 'markdown'" class="pv-md" v-html="mdHtml" />
-  <iframe v-else class="pv-html" sandbox="" :srcdoc="htmlDoc" title="preview" />
+  <iframe v-else class="pv-html" sandbox="allow-same-origin" :srcdoc="htmlDoc" title="preview" />
 </template>
 
 <style scoped>
