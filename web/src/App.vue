@@ -44,7 +44,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.6.16';
+const appVersion = '0.6.17';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -127,8 +127,18 @@ function buildWrapExts(): Extension[] {
   return store.lineWrapping ? [EditorView.lineWrapping] : [];
 }
 
+/**
+ * 行号槽 + 折叠槽的组合。
+ *
+ * CodeMirror 的 gutter 左右顺序 = 扩展添加顺序，所以这里把两者放在同一个
+ * compartment 里统一管理，保证「行号在左、折叠箭头在右」：
+ *   - 开行号：[lineNumbers(), foldGutter()] → 行号 | 折叠
+ *   - 关行号：[foldGutter()]                → 折叠独占（自然落到最左）
+ * 若把 foldGutter 留在主 extensions 里（早于本 compartment 添加），
+ * 它就会跑到行号左侧，与主流编辑器习惯相反。
+ */
 function buildLineNoExts(): Extension[] {
-  return store.showLineNumbers ? [lineNumbers()] : [];
+  return store.showLineNumbers ? [lineNumbers(), foldGutter()] : [foldGutter()];
 }
 
 // 程序化文档替换标记：外部变更重载/首次挂载走这条通道，不应计为用户编辑。
@@ -223,7 +233,8 @@ function mountEditor(tab: { id: number; content: string; path: string; name: str
       highlightActiveLineGutter(),
       highlightSpecialChars(),
       highlightSelectionMatches(),
-      foldGutter(),
+      // foldGutter 不在此处：它要与行号保持固定左右顺序，交给 lineNoCompartment
+      // 统一管理（见 buildLineNoExts）。放在这里会排到行号左侧。
       history(),
       keymap.of([...defaultKeymap, ...historyKeymap, ...foldKeymap, ...searchKeymap]),
       // 应用级快捷键（Prec.highest 优先于 defaultKeymap，含 Tab 缩进）
