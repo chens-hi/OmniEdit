@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.5.94
+version=0.5.95
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.5.94: HTML 预览改用 blob URL 渲染（桌面/移动统一），修复移动端 HTML 预览空白
+changelog=0.5.95: 切页签时立即重置预览内容，消除 MD/HTML 切换瞬间的残留闪烁

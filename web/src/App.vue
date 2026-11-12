@@ -45,7 +45,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.94';
+const appVersion = '0.5.95';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -675,6 +675,7 @@ onMounted(async () => {
           <!-- 预览态：填满整个编辑区（editor-pane 已 v-show 隐藏）；无标题栏，眼/笔按钮切回编辑 -->
           <div v-if="showPreview && store.activeTab?.previewKind" class="preview-full">
             <PreviewPanel
+              :tab-id="store.activeTab.id"
               :kind="store.activeTab.previewKind"
               :content="store.activeTab.content"
             />

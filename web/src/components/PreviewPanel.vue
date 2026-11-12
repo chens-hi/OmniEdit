@@ -17,18 +17,23 @@ import { theme } from '../theme';
  *
  * 主题：md 走 CSS 变量天然适配；html blob 文档内注入跟随主题的基础样式（theme ref 驱动）。
  */
-const props = defineProps<{ kind: 'markdown' | 'html'; content: string }>();
+const props = defineProps<{ tabId: number; kind: 'markdown' | 'html'; content: string }>();
 
-// 预览独立防抖：停止输入 250ms 后再渲染。
+// 预览内容（防抖）：同一页签内编辑 → 停止输入 250ms 后更新；
+// 切页签 → 立即重置为新页签内容（不等防抖，避免残留上一页内容闪烁）。
 const debounced = ref(props.content);
 let timer: number | undefined;
 watch(() => props.content, (v) => {
   window.clearTimeout(timer);
   timer = window.setTimeout(() => { debounced.value = v; }, 250);
 });
+// 切页签（tabId 变化）：立刻同步到新页签内容，清掉上一页残留。
+watch(() => props.tabId, () => {
+  window.clearTimeout(timer);
+  debounced.value = props.content;
+});
 onBeforeUnmount(() => {
   window.clearTimeout(timer);
-  if (blobUrl.value) URL.revokeObjectURL(blobUrl.value);
 });
 
 // markdown：解析 + 净化（防脚本注入）。
