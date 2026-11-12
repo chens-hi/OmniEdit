@@ -45,7 +45,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.89';
+const appVersion = '0.5.90';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -511,7 +511,7 @@ const previewShowing = computed(() => showPreview.value && !!store.activeTab?.pr
 
 // ---- 预览/编辑悬浮按钮：可拖拽，点按切换，拖拽后吸附左右边缘，位置持久化 ----
 const TOGGLE_POS_KEY = 'omniedit.previewTogglePos';
-const TOGGLE_SIZE = 32;        // 按钮边长（px，与 CSS 一致）
+const TOGGLE_SIZE = 44;        // 按钮边长（px，与 CSS 一致）
 const TOGGLE_MARGIN = 10;      // 吸附到边缘时的留白
 const TOGGLE_DRAG_THRESHOLD = 6; // 区分点按/拖拽的移动阈值
 
@@ -658,7 +658,16 @@ onMounted(async () => {
             :style="togglePos ? { left: togglePos.x + 'px', top: togglePos.y + 'px', right: 'auto' } : undefined"
             :title="showPreview ? t('toggleEdit') : t('togglePreview')"
             @pointerdown="onTogglePointerDown"
-          >{{ showPreview ? '✎' : '👁' }}</button>
+          >
+            <!-- 铅笔：返回编辑 -->
+            <svg v-if="showPreview" class="pv-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+            </svg>
+            <!-- 眼睛：进入预览 -->
+            <svg v-else class="pv-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
+            </svg>
+          </button>
         </div>
       </div>
     </div>

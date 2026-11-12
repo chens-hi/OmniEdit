@@ -235,30 +235,43 @@ body,
   display: flex;
   flex-direction: column;
 }
-/* 眼睛/铅笔：预览/编辑切换按钮，悬浮可拖拽（默认右上角，拖后吸附边缘并记忆位置） */
+/* 眼睛/铅笔：预览/编辑切换按钮，圆形悬浮可拖拽（默认右上角，拖后吸附边缘并记忆位置） */
 .preview-toggle {
   position: absolute;
   top: 8px;
   right: 10px;
   z-index: 60; /* 高于编辑器内容，低于右键菜单(250) */
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 50%; /* 圆形悬浮图标 */
   background: var(--toolbar-bg);
   color: var(--fg);
-  font-size: 15px;
-  cursor: pointer;
+  cursor: grab; /* 可拖拽暗示 */
   padding: 0;
   line-height: 1;
   touch-action: none; /* 拖拽时禁用浏览器触摸手势，避免滚动/选中干扰 */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
 }
 .preview-toggle:hover {
   border-color: var(--accent);
   color: var(--accent);
+}
+/* 拖拽中：抬起（放大 + 强阴影），无过渡以紧跟手指 */
+.preview-toggle.dragging {
+  cursor: grabbing;
+  transform: scale(1.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  transition: none;
+}
+/* 内嵌 SVG 图标尺寸 */
+.preview-toggle .pv-ico {
+  width: 20px;
+  height: 20px;
 }
 
 /* ---------- 状态栏 ---------- */
