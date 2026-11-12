@@ -17,6 +17,11 @@ const dict = {
   untitled: { zh: '无标题', en: 'Untitled' },
   openFailed: { zh: '打开失败', en: 'Open failed' },
   saveFailed: { zh: '保存失败', en: 'Save failed' },
+  // 打开失败的分类文案：一句话说清结论 + 数据，不用嵌套冒号。
+  openTooLarge: {
+    zh: '文件过大，无法打开（{size}，上限 {limit}）',
+    en: 'File too large to open ({size}, limit {limit})',
+  },
   notUtf8: {
     zh: '文件编码无法识别（不是 UTF-8/GBK 系编码），暂不支持编辑以避免乱码。',
     en: 'Unrecognized encoding (not UTF-8/GBK family). Editing is disabled to avoid mojibake.',
@@ -160,10 +165,17 @@ const dict = {
 
 export type MsgKey = keyof typeof dict;
 
-/** 翻译函数：返回当前语言文案。 */
-export function t(key: MsgKey): string {
+/**
+ * 翻译函数：返回当前语言文案。
+ * params 可选，按 `{name}` 占位替换（用于把后端给的事实数据填进文案，
+ * 避免前端手拼字符串导致标点/语序不一致）。
+ */
+export function t(key: MsgKey, params?: Record<string, string | number>): string {
   const entry = dict[key];
-  return entry[lang.value] ?? entry.zh;
+  const raw = entry[lang.value] ?? entry.zh;
+  if (!params) return raw;
+  return raw.replace(/\{(\w+)\}/g, (m, name: string) =>
+    name in params ? String(params[name]) : m);
 }
 
 /** 响应式翻译（用于模板 computed）。 */

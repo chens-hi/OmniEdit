@@ -212,7 +212,9 @@ type ErrFileTooLarge struct {
 }
 
 func (e ErrFileTooLarge) Error() string {
-	return fmt.Sprintf("文件过大：%.1f MB（上限 %.0f MB），无法打开",
+	// 只陈述事实（多大、上限多少），不加「无法打开」这类结论——
+	// 结论由前端按场景措辞（打开/预览/搜索语气不同），避免文案被后端焊死。
+	return fmt.Sprintf("文件过大：%.1f MB，上限 %.0f MB",
 		float64(e.Size)/(1<<20), float64(e.Limit)/(1<<20))
 }
 

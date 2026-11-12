@@ -430,11 +430,30 @@ export const useEditorStore = defineStore('editor', () => {
 
   /**
    * reportOpenError 打开失败的统一提示（单一 toast 通道，见 setError）。
-   * 时长 6.5s：文件过大这类提示文字较长，默认 3.2s 读不完。
+   *
+   * 文案结构：标题一句话说清「不行在哪」，细节另起一段给数据。
+   * 旧实现是 `${t('openFailed')}: ${后端原文}`，渲染成
+   * 「打开失败: 文件过大：50.0 MB（上限 10 MB），无法打开」——
+   * 半角冒号 + 中外两层冒号套叠 + 尾部「无法打开」与开头「打开失败」重复。
+   * 现改为：标题「文件过大，无法打开」+ 细节「50.0 MB 超过了 10 MB 的上限」。
+   *
+   * 时长 6.5s：文案较长，默认 3.2s 读不完。
    */
   function reportOpenError(e: unknown) {
-    const msg = (e as Error).message.includes('UTF-8') ? t('notUtf8') : (e as Error).message;
-    setError(`${t('openFailed')}: ${msg}`);
+    const err = e as Error;
+    const raw = err.message;
+    if (raw.includes('UTF-8')) {
+      setError(t('notUtf8'));
+      return;
+    }
+    // 文件过大：后端只回事实「文件过大：50.0 MB，上限 10 MB」，
+    // 这里取出两个数字，用整句模板重新组织（不拼冒号，标点由模板统一）。
+    const m = raw.match(/文件过大：([\d.]+\s*\w+)，上限\s*([\d.]+\s*\w+)/);
+    if (m) {
+      setError(t('openTooLarge', { size: m[1], limit: m[2] }));
+      return;
+    }
+    setError(raw);
   }
 
   /**
@@ -574,7 +593,7 @@ export const useEditorStore = defineStore('editor', () => {
       // （保存失败仍要提示——那是用户必须知道的异常。）
       return true;
     } catch (e) {
-      setError(`${t('saveFailed')}: ${(e as Error).message}`);
+      setError(`${t('saveFailed')}：${(e as Error).message}`);
       return false;
     }
   }
@@ -600,7 +619,7 @@ export const useEditorStore = defineStore('editor', () => {
       // （lastSaveDir 也在同一份快照里；不再额外先写一次偏好，避免冗余 PUT）。
       persistSession();
     } catch (e) {
-      setError(`${t('saveFailed')}: ${(e as Error).message}`);
+      setError(`${t('saveFailed')}：${(e as Error).message}`);
     }
   }
 
@@ -743,7 +762,7 @@ export const useEditorStore = defineStore('editor', () => {
         // 保留当前：清掉标记，避免每次切页都再问一遍。
         tab.externalChanged = false;
       }
-      if (reload) toast(`${t('reloaded')}: ${tab.name}`, 'success');
+      if (reload) toast(t('reloaded'), 'success');
     } finally {
       tab.externalPrompting = false;
     }
