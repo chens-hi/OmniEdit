@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.6.0
+version=0.6.1
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.6.0: 大文件支持——打开上限 5MB→10MB（超限明确提示，移除截断只读预览）；每键 O(n) 性能优化（内容 provider，10MB 内编辑流畅）；预览超 1MB 显示提示不渲染
+changelog=0.6.1: 修复设置改动（字号/字体/主题/换行/缩进/自动预览等）会清空最近打开会话的问题；偏好与会话改为同源整体写回并串行化，避免并发覆盖；启动读取失败时不再用空会话覆盖服务端数据

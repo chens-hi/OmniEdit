@@ -147,8 +147,18 @@ export const useEditorStore = defineStore('editor', () => {
   // 自动预览总开关（视图菜单「自动预览」勾选）：可预览类型（md/htm/html）打开/切换时按它决定是否自动显示预览。
   const autoPreview = ref<boolean>(PREF_DEFAULTS.autoPreview);
 
+  /** restoreGuard=true 期间不写盘：恢复过程产生的中间态不是用户操作。 */
+  let restoreGuard = false;
+
   /**
-   * prefsSnapshot 把当前全部偏好收敛成一个对象（后端整体覆盖写回的最小单元）。
+   * prefsSnapshot 把「全部偏好 + 会话」收敛成一个对象——后端整体覆盖写回的唯一单元。
+   *
+   * 关键约束：会话必须与偏好同源同写。历史上存在两条写路径——persistPrefs 只写
+   * 偏好（不含 session）、persistSession 才带上会话；而 PUT /api/prefs 是整体
+   * 覆盖写回，于是任何一次设置改动（字号/字体/主题/换行/行号/缩进/自动预览/
+   * 另存目录）都会把 session 键抹掉，下次启动就读不到会话，表现为「最近打开的
+   * 文件全被清空」。故此处强制合并 session，禁止再出现只写偏好的路径。
+   *
    * KEY 引用常量，新增配置项时在此补一行即可，避免漏存。
    */
   function prefsSnapshot(): Record<string, unknown> {
@@ -165,20 +175,72 @@ export const useEditorStore = defineStore('editor', () => {
       [PREF_KEYS.showLineBreaks]: showLineBreaks.value,
       [PREF_KEYS.autoPreview]: autoPreview.value,
       [PREF_KEYS.lastSaveDir]: lastSaveDir.value,
+      [SESSION_KEY]: sessionSnapshot(),
     };
   }
 
   /** 后端是否可达（null=未探测）。initPrefs 时探测，供诊断/提示用。 */
   const prefsBackendOk = ref<boolean | null>(null);
 
+  /** 启动时是否成功读到后端偏好（false = 服务端可能有数据但没读到，写前需补读）。 */
+  let prefsLoaded = false;
+
+  /** 补读失败计数：连续 3 次仍失败才允许盲写（见 persistAll）。 */
+  let prefsReadFailures = 0;
+
   /**
-   * persistPrefs 把当前偏好 fire-and-forget 推到后端（跨浏览器共享）。
-   * 后端失败静默——编辑器不因偏好存储故障而不可用，下次改动会重试。
+   * writeChain 写盘串行链：偏好久会话都是整体覆盖写，并发 PUT 乱序到达时
+   * 会用旧快照盖掉新快照（例如刚打开文件写入会话，紧接着的设置改动后发先至，
+   * 又把会话抹回空）。串行化保证落盘顺序 = 状态演进顺序。
    */
+  let writeChain: Promise<void> = Promise.resolve();
+
+  /**
+   * persistAll 把「偏好 + 会话」整体写回后端（fire-and-forget，队列串行）。
+   * 后端失败静默——编辑器不因偏好存储故障而不可用，下次改动会重试。
+   * 返回是否写盘成功（仅 resetToDefaults 需要等待结果，其余调用点忽略）。
+   */
+  function persistAll(): Promise<boolean> {
+    if (restoreGuard) return Promise.resolve(false);
+    const snap = prefsSnapshot();
+    const p = writeChain.then(async (): Promise<boolean> => {
+      // 启动补读失败时的兜底：服务端很可能存着上次的会话，直接覆盖会把它清掉。
+      // 先取回来，本地会话为空（说明确实没恢复出标签）时沿用服务端的。
+      if (!prefsLoaded) {
+        try {
+          const server = await getPrefs();
+          prefsLoaded = true;
+          prefsReadFailures = 0;
+          const localSess = snap[SESSION_KEY] as { tabs?: string[] } | undefined;
+          const serverSess = server[SESSION_KEY] as { tabs?: string[] } | undefined;
+          if (!localSess?.tabs?.length && serverSess?.tabs?.length) {
+            snap[SESSION_KEY] = serverSess;
+          }
+        } catch {
+          // 仍读不到：宁可这次不写，也不拿「空会话」覆盖服务端可能存在的会话。
+          // 连续失败 3 次后放行，避免后端长期异常时偏好永远无法保存（此地仍有
+          // 风险，但属于「服务端已不可读」的极端场景，优先保证设置可用）。
+          prefsReadFailures += 1;
+          if (prefsReadFailures < 3) return false;
+        }
+      }
+      try {
+        await putPrefs(snap);
+        prefsBackendOk.value = true;
+        return true;
+      } catch {
+        prefsBackendOk.value = false;
+        return false;
+      }
+    });
+    // 队列只关心顺序，不传播失败（否则一次失败会阻断后续所有写盘）。
+    writeChain = p.then(() => undefined, () => undefined);
+    return p;
+  }
+
+  /** persistPrefs 兼容旧调用点：与会话同源写盘（见 prefsSnapshot 注释）。 */
   function persistPrefs() {
-    putPrefs(prefsSnapshot())
-      .then(() => { prefsBackendOk.value = true; })
-      .catch(() => { prefsBackendOk.value = false; });
+    persistAll();
   }
 
   function setIndentMode(mode: IndentMode, width: number) {
@@ -453,7 +515,6 @@ export const useEditorStore = defineStore('editor', () => {
       const content = getTabContent(tab.id);
       const { mtime } = await writeFile(target, content, '', tab.hasBom, tab.encoding);
       lastSaveDir.value = target.replace(/[\\/][^\\/]+$/, '');
-      persistPrefs();
       // tab 来自 activeTab computed（响应式代理），赋值安全。
       tab.path = target;
       tab.name = fileNameOf(target);
@@ -462,7 +523,8 @@ export const useEditorStore = defineStore('editor', () => {
       tab.mtime = mtime;
       tab.dirty = false;
       status.value = `${t('saved')} ${target}`;
-      // 草稿落盘后成为会话一员（有路径）→ 持久化会话。
+      // 草稿落盘后成为会话一员（有路径）→ 一次性写回偏好 + 会话
+      // （lastSaveDir 也在同一份快照里；不再额外先写一次偏好，避免冗余 PUT）。
       persistSession();
     } catch (e) {
       setError(`${t('saveFailed')}: ${(e as Error).message}`);
@@ -612,14 +674,12 @@ export const useEditorStore = defineStore('editor', () => {
 
   // ---- 会话恢复：记录「打开未关闭」的标签，下次自动还原（VS Code 式） ----
 
-  /** restoreGuard=true 期间不回写会话，避免恢复过程把中间态当作用户操作存盘。 */
-  let restoreGuard = false;
-
   /**
    * sessionSnapshot 取当前会话（已落盘标签的路径 + 活动标签）。
    * 无路径草稿（未保存的无标题）不记——没内容可恢复。
+   * 注意：仅由 prefsSnapshot 调用，不单独写盘（见 prefsSnapshot 注释）。
    */
-  function sessionSnapshot(): Record<string, unknown> | null {
+  function sessionSnapshot(): Record<string, unknown> {
     const paths = tabs.value.filter(tb => tb.path).map(tb => tb.path);
     const active = activeTab.value;
     const activePath = active && active.path ? active.path : (paths[paths.length - 1] ?? '');
@@ -628,20 +688,13 @@ export const useEditorStore = defineStore('editor', () => {
   }
 
   /**
-   * persistSession 把会话快照并入偏好整体写回。
+   * persistSession 把会话（连带偏好）整体写回。
    * 直接改 tabs/activeId 后调用（openFile/closeTab/doSaveAs），即操作即存，
    * 不依赖页面卸载（浏览器 unload 阶段 fetch 不可靠）。
+   * 与 persistPrefs 共用 persistAll：两者都写完整快照，避免互相抹字段。
    */
   function persistSession() {
-    if (restoreGuard) return;
-    const snap = prefsSnapshot();
-    const sess = sessionSnapshot();
-    if (sess) {
-      snap[SESSION_KEY] = sess;
-    }
-    putPrefs(snap)
-      .then(() => { prefsBackendOk.value = true; })
-      .catch(() => { prefsBackendOk.value = false; });
+    persistAll();
   }
 
   /**
@@ -655,6 +708,7 @@ export const useEditorStore = defineStore('editor', () => {
     try {
       prefs = await getPrefs();
       prefsBackendOk.value = true;
+      prefsLoaded = true;
     } catch {
       prefsBackendOk.value = false;
     }
@@ -738,15 +792,10 @@ export const useEditorStore = defineStore('editor', () => {
     showLineBreaks.value = PREF_DEFAULTS.showLineBreaks;
     lastSaveDir.value = PREF_DEFAULTS.lastSaveDir;
 
-    // 后端写回空对象 = 清空持久化偏好与会话（下次 initPrefs 走默认值）。
-    let ok = false;
-    try {
-      await putPrefs({});
-      prefsBackendOk.value = true;
-      ok = true;
-    } catch {
-      prefsBackendOk.value = false;
-    }
+    // 后端写回默认值快照（含空会话）= 清空持久化偏好与会话（下次 initPrefs 走默认值）。
+    // 不再写 {}：后端 Set 对空对象虽合法，但快照化后语义更明确，且复用同一条
+    // 串行写队列，避免与恢复后的首个 persistSession 乱序（旧实现直接裸 putPrefs）。
+    const ok = await persistAll();
 
     // 回到初始界面：一个空白无标题草稿。
     untitledSeq = 0;
