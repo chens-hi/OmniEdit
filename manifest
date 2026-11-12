@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.6.14
+version=0.6.15
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.6.14: 页签文字居中——左右留白对称（各 20px，含状态竖条与关闭号占位），最小宽度 88px→100px
+changelog=0.6.15: 预览渲染改为异步——点击立即切换（137ms→11ms）并显示加载态，解析在后台一帧完成；修复 Windows 下预览相对资源（图片/链接）不重写的问题
