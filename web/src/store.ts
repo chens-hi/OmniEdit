@@ -384,6 +384,20 @@ export const useEditorStore = defineStore('editor', () => {
     return tabById(draft.id)!;
   }
 
+  /** applyFile 把后端读到的文件内容写入已存在的标签（纯赋值，无请求）。 */
+  function applyFile(tab: Tab, file: FileMeta) {
+    tab.content = file.content;
+    tab.mtime = file.mtime;
+    tab.loading = false;
+    tab.readonly = false;
+    tab.hasBom = file.encoding === 'utf-8-bom';
+    tab.encoding = file.encoding ?? 'utf-8';
+    tab.lineEnding = file.lineEnding ?? '';
+    const det = detectIndent(file.content);
+    tab.indent = det.style;
+    tab.indentWidth = det.width;
+  }
+
   /**
    * fillTab 拉取文件内容填入已存在的占位标签（不建标签、不改 activeId）。
    * 失败时移除该标签并按需报错；silent=true 用于后台补加载——
@@ -392,36 +406,38 @@ export const useEditorStore = defineStore('editor', () => {
   async function fillTab(tab: Tab, silent = false): Promise<boolean> {
     try {
       const { file } = await readFile(tab.path);
-      tab.content = file.content;
-      tab.mtime = file.mtime;
-      tab.loading = false;
-      tab.readonly = false;
-      tab.hasBom = file.encoding === 'utf-8-bom';
-      tab.encoding = file.encoding ?? 'utf-8';
-      tab.lineEnding = file.lineEnding ?? '';
-      const det = detectIndent(file.content);
-      tab.indent = det.style;
-      tab.indentWidth = det.width;
+      applyFile(tab, file);
       if (activeId.value === tab.id) status.value = `${t('opened')} ${file.displayPath ?? file.path}`;
       return true;
     } catch (e) {
       const idx = tabs.value.findIndex(tb => tb.id === tab.id);
       if (idx >= 0) tabs.value.splice(idx, 1);
       if (activeId.value === tab.id) activeId.value = tabs.value[Math.min(idx, tabs.value.length - 1)]?.id ?? 0;
-      if (!silent) {
-        const msg = (e as Error).message.includes('UTF-8') ? t('notUtf8') : (e as Error).message;
-        setError(`${t('openFailed')}: ${msg}`);
-        // 状态栏只在有活动标签时渲染（无标签即空白页），此时 error 无处显示。
-        // 打开失败又恰好清空了标签集（空白页/唯一标签场景）时用户看不到任何反馈，
-        // 故同步弹一条 toast——它挂在全局层，与是否有标签无关。
-        // 时长放宽到 6.5s：文件过大这类提示文字较长，默认 3.2s 读不完。
-        toast(`${t('openFailed')}: ${msg}`, 'error', 6500);
-      }
+      if (!silent) reportOpenError(e);
       return false;
     }
   }
 
-  /** 打开文件（已打开则激活；标签数达上限时拒绝并提示）。 */
+  /**
+   * reportOpenError 打开失败的统一提示。
+   * 状态栏只在有活动标签时渲染（无标签即空白页），此时 error 无处显示，
+   * 故同步弹一条 toast——它挂在全局层，与是否有标签无关。
+   * 时长 6.5s：文件过大这类提示文字较长，默认 3.2s 读不完。
+   */
+  function reportOpenError(e: unknown) {
+    const msg = (e as Error).message.includes('UTF-8') ? t('notUtf8') : (e as Error).message;
+    setError(`${t('openFailed')}: ${msg}`);
+    toast(`${t('openFailed')}: ${msg}`, 'error', 6500);
+  }
+
+  /**
+   * openFile 打开文件（已打开则激活；标签数达上限时拒绝并提示）。
+   *
+   * 关键：**先读成功再建标签**。旧实现是先 push 占位标签再拉内容，
+   * 失败时再把标签删掉——超大文件会先冒出一个页签、闪一下又消失，
+   * 观感上像「打开了再关掉」。现在读取失败（含文件过大）直接提示，
+   * 标签栏完全不受影响。
+   */
   async function openFile(path: string) {
     setError('');
     const existing = tabs.value.find(tb => tb.path === path);
@@ -433,10 +449,24 @@ export const useEditorStore = defineStore('editor', () => {
       toast(t('tabLimitReached').replace('{n}', String(MAX_TABS)), 'error');
       return;
     }
+    // 读取在「无标签」状态下进行：后端对超大文件是 Stat 后直接拒绝，
+    // 不会传内容，所以这里几乎立即返回，界面不会长时间无反馈。
+    let file: FileMeta;
+    try {
+      ({ file } = await readFile(path));
+    } catch (e) {
+      reportOpenError(e);
+      return;
+    }
+    // 读取成功才建标签：此时数据已就绪，页签一出现就是可编辑的完整内容。
+    if (tabs.value.length >= MAX_TABS) {
+      toast(t('tabLimitReached').replace('{n}', String(MAX_TABS)), 'error');
+      return;
+    }
     const tab = addTabStub(path);
+    applyFile(tab, file);
     activeId.value = tab.id;
-    await fillTab(tab);
-    // 打开/打开失败都会改变标签集 → 即时持久化会话（restoreGuard 期间跳过）。
+    status.value = `${t('opened')} ${file.displayPath ?? file.path}`;
     persistSession();
   }
 

@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.6.3
+version=0.6.4
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.6.3: 优化启动恢复体验——标签栏一次性铺出全部会话页签（不再逐个加载/活动页乱跳）；只等待上次的活动文件即进入可编辑，其余后台并发补齐；恢复期间不再闪现欢迎页；已删除/超限的文件静默跳过并自动从会话剔除
+changelog=0.6.4: 打开超大文件时不再先建页签再移除——改为读取成功后才创建页签，文件超限只弹提示，标签栏完全不受影响
