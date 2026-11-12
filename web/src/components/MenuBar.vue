@@ -169,6 +169,7 @@ const menus = computed<Menu[]>((): Menu[] => {
           ],
         },
         { type: 'checkbox', label: t('menuWordWrap'), checked: () => store.lineWrapping, action: () => store.setLineWrapping(!store.lineWrapping) },
+        { type: 'checkbox', label: t('menuAutoPreview'), checked: () => store.autoPreview, action: () => store.setAutoPreview(!store.autoPreview) },
         { type: 'sep' },
         {
           // 主题 ▸ 自动（跟随宿主系统）/浅色/深色，存配置表默认自动。

@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.5.84
+version=0.5.85
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.5.84: 复制/剪切无选区时作用于光标所在整行（复制该行/剪切删除该行）
+changelog=0.5.85: 新增 HTML/Markdown 预览——眼睛/铅笔切换 + 视图菜单自动预览 + 预览态只读 + 主题适配

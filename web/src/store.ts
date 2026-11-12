@@ -22,6 +22,7 @@ export const PREF_KEYS = {
   showSpaces: 'showSpaces',
   showTabs: 'showTabs',
   showLineBreaks: 'showLineBreaks',
+  autoPreview: 'autoPreview',
   lastSaveDir: 'lastSaveDir',
 } as const;
 
@@ -37,6 +38,7 @@ export const PREF_DEFAULTS = {
   showSpaces: false,
   showTabs: false,
   showLineBreaks: false,
+  autoPreview: true,
   lastSaveDir: '',
 };
 
@@ -105,6 +107,8 @@ export interface Tab {
   mtime: string;       // 服务端 mtime，用于冲突检测；草稿为空
   dirty: boolean;
   isMarkdown: boolean;
+  /** 预览渲染类型（md/htm/html 有预览，其它 null）；打开/另存时按文件名设置。 */
+  previewKind: 'markdown' | 'html' | null;
   loading: boolean;
   /** 只读（超大文件截断预览时为 true，禁止保存）。 */
   readonly: boolean;
@@ -140,6 +144,8 @@ export const useEditorStore = defineStore('editor', () => {
   const showSpaces = ref<boolean>(PREF_DEFAULTS.showSpaces);
   const showTabs = ref<boolean>(PREF_DEFAULTS.showTabs);
   const showLineBreaks = ref<boolean>(PREF_DEFAULTS.showLineBreaks);
+  // 自动预览总开关（视图菜单「自动预览」勾选）：可预览类型（md/htm/html）打开/切换时按它决定是否自动显示预览。
+  const autoPreview = ref<boolean>(PREF_DEFAULTS.autoPreview);
 
   /**
    * prefsSnapshot 把当前全部偏好收敛成一个对象（后端整体覆盖写回的最小单元）。
@@ -157,6 +163,7 @@ export const useEditorStore = defineStore('editor', () => {
       [PREF_KEYS.showSpaces]: showSpaces.value,
       [PREF_KEYS.showTabs]: showTabs.value,
       [PREF_KEYS.showLineBreaks]: showLineBreaks.value,
+      [PREF_KEYS.autoPreview]: autoPreview.value,
       [PREF_KEYS.lastSaveDir]: lastSaveDir.value,
     };
   }
@@ -193,6 +200,11 @@ export const useEditorStore = defineStore('editor', () => {
   function setThemeMode(mode: ThemeMode) {
     themeMode.value = mode;
     setThemeOverride(mode);
+    persistPrefs();
+  }
+  /** 自动预览总开关：视图菜单「自动预览」勾选，即时生效并持久化。 */
+  function setAutoPreview(on: boolean) {
+    autoPreview.value = on;
     persistPrefs();
   }
   function setLineWrapping(on: boolean) {
@@ -267,7 +279,7 @@ export const useEditorStore = defineStore('editor', () => {
       path: '',
       name: `${t('untitled')}${untitledSeq > 1 ? ` (${untitledSeq})` : ''}`,
       content: '', mtime: '',
-      dirty: false, isMarkdown: false, loading: false, readonly: false,
+      dirty: false, isMarkdown: false, previewKind: null, loading: false, readonly: false,
       hasBom: false,
       encoding: 'utf-8',
       lineEnding: '',
@@ -294,7 +306,7 @@ export const useEditorStore = defineStore('editor', () => {
     }
     const draft: Tab = {
       id: ++tabSeq, path, name: fileNameOf(path), content: '', mtime: '',
-      dirty: false, isMarkdown: isMd(path), loading: true, readonly: false,
+      dirty: false, isMarkdown: isMd(path), previewKind: previewKindOf(path), loading: true, readonly: false,
       hasBom: false,
       encoding: 'utf-8',
       lineEnding: '',
@@ -321,7 +333,7 @@ export const useEditorStore = defineStore('editor', () => {
         }
         const previewDraft: Tab = {
           id: ++tabSeq, path, name: fileNameOf(path), content: '', mtime: '',
-          dirty: false, isMarkdown: isMd(path), loading: true, readonly: true,
+          dirty: false, isMarkdown: isMd(path), previewKind: previewKindOf(path), loading: true, readonly: true,
           hasBom: false,
           encoding: 'utf-8',
           lineEnding: '',
@@ -474,6 +486,7 @@ export const useEditorStore = defineStore('editor', () => {
       tab.path = target;
       tab.name = fileNameOf(target);
       tab.isMarkdown = isMd(target);
+      tab.previewKind = previewKindOf(target);
       tab.mtime = mtime;
       tab.dirty = false;
       status.value = `${t('saved')} ${target}`;
@@ -671,6 +684,7 @@ export const useEditorStore = defineStore('editor', () => {
       showSpaces.value = pick(PREF_KEYS.showSpaces, showSpaces.value);
       showTabs.value = pick(PREF_KEYS.showTabs, showTabs.value);
       showLineBreaks.value = pick(PREF_KEYS.showLineBreaks, showLineBreaks.value);
+      autoPreview.value = pick(PREF_KEYS.autoPreview, autoPreview.value);
       lastSaveDir.value = pick(PREF_KEYS.lastSaveDir, lastSaveDir.value);
     }
 
@@ -756,9 +770,9 @@ export const useEditorStore = defineStore('editor', () => {
     batchClose, requestCloseMany, settleBatchClose,
     toasts, toast, dismissToast,
     indentMode, indentWidth, fontSize, fontFamily, themeMode, lineWrapping, showLineNumbers,
-    showSpaces, showTabs, showLineBreaks,
+    showSpaces, showTabs, showLineBreaks, autoPreview,
     setIndentMode, setFontSize, setFontFamily, setThemeMode, setLineWrapping, setShowLineNumbers,
-    setShowSpaces, setShowTabs, setShowLineBreaks,
+    setShowSpaces, setShowTabs, setShowLineBreaks, setAutoPreview,
     builtinFonts: BUILTIN_FONTS,
     openViaPicker,
     openFile, saveActive, saveTab, closeTab, markDirty, newUntitled, setError,
@@ -776,6 +790,14 @@ function fileNameOf(path: string): string {
 function isMd(path: string): boolean {
   const ext = fileNameOf(path).split('.').pop()?.toLowerCase() ?? '';
   return ext === 'md' || ext === 'markdown';
+}
+
+/** 预览渲染类型（md/htm/html 有预览，其它 null），与 language.ts 的 previewKind 同规则。 */
+function previewKindOf(path: string): 'markdown' | 'html' | null {
+  const ext = fileNameOf(path).split('.').pop()?.toLowerCase() ?? '';
+  if (ext === 'md' || ext === 'markdown') return 'markdown';
+  if (ext === 'htm' || ext === 'html') return 'html';
+  return null;
 }
 
 export type { FileMeta };

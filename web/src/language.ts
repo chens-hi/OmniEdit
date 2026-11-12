@@ -130,3 +130,23 @@ export function isMarkdown(filename: string): boolean {
   const ext = filename.split('.').pop()?.toLowerCase() ?? '';
   return ext === 'md' || ext === 'markdown';
 }
+
+/**
+ * 预览渲染类型（多后缀共用一个渲染模板）：
+ *   - md / markdown → 'markdown'（同一 Markdown 渲染器）
+ *   - htm / html → 'html'（同一 iframe 渲染器）
+ *   - 其它 → null（无预览）
+ */
+export function previewKind(filename: string): 'markdown' | 'html' | null {
+  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+  switch (ext) {
+    case 'md':
+    case 'markdown':
+      return 'markdown';
+    case 'htm':
+    case 'html':
+      return 'html';
+    default:
+      return null;
+  }
+}
