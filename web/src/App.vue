@@ -45,7 +45,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.90';
+const appVersion = '0.5.91';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -518,9 +518,10 @@ const TOGGLE_DRAG_THRESHOLD = 6; // 区分点按/拖拽的移动阈值
 const toggleBtn = ref<HTMLElement | null>(null);
 // 按钮相对 editor-area 左上的位置；null = 默认右上角（CSS top/right）。
 const togglePos = ref<{ x: number; y: number } | null>(null);
+// 拖拽状态：target=指针目标点，raf=跟随动画句柄，moved=是否已判定为拖拽。
 let toggleDrag: {
-  pointerId: number; startX: number; startY: number;
-  origLeft: number; origTop: number; moved: boolean;
+  pointerId: number; targetX: number; targetY: number;
+  raf: number; moved: boolean;
 } | null = null;
 
 function loadTogglePos() {
@@ -558,43 +559,75 @@ function snapToggleToEdge() {
   togglePos.value = clampToggle(x, cur.y);
   saveTogglePos();
 }
+/** 停止跟随动画并解绑临时监听。 */
+function endToggleDrag() {
+  if (toggleDrag) {
+    cancelAnimationFrame(toggleDrag.raf);
+    window.removeEventListener('pointermove', onTogglePointerMove);
+    window.removeEventListener('pointerup', onTogglePointerUp);
+    window.removeEventListener('pointercancel', onTogglePointerCancel);
+  }
+  toggleDrag = null;
+}
+/** 跟随动画：每帧向指针目标缓动（快速拖也平滑追上，不掉队）。 */
+function toggleFollow() {
+  if (!toggleDrag) return;
+  const cur = togglePos.value;
+  if (cur) {
+    // 缓动系数 0.5：既紧跟（快拖不掉队）又有轻微跟随感。
+    const nx = cur.x + (toggleDrag.targetX - cur.x) * 0.5;
+    const ny = cur.y + (toggleDrag.targetY - cur.y) * 0.5;
+    togglePos.value = clampToggle(nx, ny);
+  }
+  toggleDrag.raf = requestAnimationFrame(toggleFollow);
+}
 function onTogglePointerDown(e: PointerEvent) {
   const btn = e.currentTarget as HTMLElement;
   const parent = btn.offsetParent as HTMLElement;
   const parentRect = parent.getBoundingClientRect();
   const rect = btn.getBoundingClientRect();
+  // 捕获指针到按钮：快速拖动/移出按钮范围时 move 事件不丢。
+  btn.setPointerCapture(e.pointerId);
+  const start = clampToggle(rect.left - parentRect.left, rect.top - parentRect.top);
+  togglePos.value = start;
   toggleDrag = {
     pointerId: e.pointerId,
-    startX: e.clientX, startY: e.clientY,
-    origLeft: rect.left - parentRect.left,
-    origTop: rect.top - parentRect.top,
+    targetX: e.clientX - parentRect.left - TOGGLE_SIZE / 2,
+    targetY: e.clientY - parentRect.top - TOGGLE_SIZE / 2,
+    raf: requestAnimationFrame(toggleFollow),
     moved: false,
   };
   window.addEventListener('pointermove', onTogglePointerMove);
   window.addEventListener('pointerup', onTogglePointerUp);
-  window.addEventListener('pointercancel', onTogglePointerUp);
+  window.addEventListener('pointercancel', onTogglePointerCancel);
 }
 function onTogglePointerMove(e: PointerEvent) {
   if (!toggleDrag || e.pointerId !== toggleDrag.pointerId) return;
-  const dx = e.clientX - toggleDrag.startX;
-  const dy = e.clientY - toggleDrag.startY;
-  if (!toggleDrag.moved && Math.hypot(dx, dy) < TOGGLE_DRAG_THRESHOLD) return;
-  toggleDrag.moved = true;
-  togglePos.value = clampToggle(toggleDrag.origLeft + dx, toggleDrag.origTop + dy);
+  const parent = toggleBtn.value?.offsetParent as HTMLElement;
+  const parentRect = parent.getBoundingClientRect();
+  toggleDrag.targetX = e.clientX - parentRect.left - TOGGLE_SIZE / 2;
+  toggleDrag.targetY = e.clientY - parentRect.top - TOGGLE_SIZE / 2;
+  // 超过阈值判定为拖拽（此前视为点按，不更新位置以免微动就跳）。
+  if (!toggleDrag.moved) {
+    const cur = togglePos.value;
+    if (cur && Math.hypot(toggleDrag.targetX - cur.x, toggleDrag.targetY - cur.y) < TOGGLE_DRAG_THRESHOLD) return;
+    toggleDrag.moved = true;
+  }
 }
 function onTogglePointerUp(e: PointerEvent) {
   if (!toggleDrag || e.pointerId !== toggleDrag.pointerId) return;
   const moved = toggleDrag.moved;
-  window.removeEventListener('pointermove', onTogglePointerMove);
-  window.removeEventListener('pointerup', onTogglePointerUp);
-  window.removeEventListener('pointercancel', onTogglePointerUp);
-  toggleDrag = null;
+  endToggleDrag();
   if (!moved) {
     // 点按：切换预览/编辑
     showPreview.value = !showPreview.value;
     return;
   }
   snapToggleToEdge();
+}
+function onTogglePointerCancel(e: PointerEvent) {
+  if (!toggleDrag || e.pointerId !== toggleDrag.pointerId) return;
+  endToggleDrag();
 }
 
 onMounted(async () => {
