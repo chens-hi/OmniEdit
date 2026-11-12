@@ -156,8 +156,29 @@ let suppressClickUntil = 0;  // 拖动落位后短暂吞 click，避免补发的
 /** 页签单击激活（拖动落位后 180ms 内的补发 click 被忽略）。 */
 function onTabClick(id: number) {
   if (performance.now() < suppressClickUntil) return;
+  if (skipNextClick) { skipNextClick = false; return; }
   store.activeId = id;
 }
+/**
+ * 触摸端激活（在 pointerup 里直接调用，不等 click）。
+ *
+ * 为什么不用 click：触摸端 click 的派发依赖「pointerdown/up 之间没有滚动、
+ * 没有 preventDefault」，条件比鼠标苛刻得多——页签条可横向滚动时，
+ * 浏览器可能判定这是一次滚动尝试而**不派发 click**，表现就是「要再点一次
+ * 才切过去」。移动端该问题偶发且无法用合成事件稳定复现，故不依赖 click。
+ *
+ * 只在「未拖动」时生效；拖动落位由 finishPress 处理，两者互斥。
+ */
+function activateOnPointerUp(id: number) {
+  if (performance.now() < suppressClickUntil) return;
+  if (store.activeId === id) return;
+  store.activeId = id;
+}
+/**
+ * 触摸点按后浏览器可能补发 click：激活已在 pointerup 完成，这次 click 属多余。
+ * 用「一次性标志」而非时间窗口——时间窗口会误伤用户的下一次快速点击。
+ */
+let skipNextClick = false;
 
 function addPressListeners() {
   window.addEventListener('pointermove', onPressMove, { passive: false });
@@ -174,6 +195,9 @@ function removePressListeners() {
 }
 
 function onTabPointerDown(e: PointerEvent, id: number) {
+  // 点在关闭号上：不进入页签手势（否则 pointerup 会先把该页签激活，
+  // 紧接着 click 又把它关掉，看起来像闪一下；也避免误触发拖动）。
+  if ((e.target as HTMLElement | null)?.closest('.tab-close')) return;
   cancelPress();
   pressPointerId = e.pointerId;
   pressTabId = id;
@@ -236,7 +260,7 @@ function onPressCancel(e: PointerEvent) {
   cancelPress();
 }
 
-/** 手势结束（抬指/取消）：拖动则落位排序，否则无操作（长按只服务拖动）。 */
+/** 手势结束（抬指/取消）：拖动则落位排序；未拖动则（触摸端点按）激活页签。 */
 function finishPress() {
   const wasDragging = pointerDragging;
   const isMouse = pressIsMouse;
@@ -248,6 +272,11 @@ function finishPress() {
       moveTab(id, over.id, over.side);
       if (!isMouse) haptic(24); // 触摸：交换完成反馈
     }
+  } else if (!isMouse && id != null) {
+    // 触摸点按未拖动 → 直接激活，不等 click（见 activateOnPointerUp 说明）。
+    // 随后可能补发一次 click：用一次性标志跳过，不重复激活。
+    skipNextClick = true;
+    activateOnPointerUp(id);
   }
   abortDrag();
   cancelPress();
