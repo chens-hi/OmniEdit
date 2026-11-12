@@ -563,8 +563,8 @@ export const useEditorStore = defineStore('editor', () => {
       const { mtime } = await writeFile(tab.path, content, tab.mtime, tab.hasBom, tab.encoding);
       tab.mtime = mtime;
       tab.dirty = false;
-      // 保存成功走 toast（含非活动标签的批量保存，标明是哪个文件）。
-      toast(activeId.value === tab.id ? t('saved') : `${t('saved')} ${tab.name}`, 'success');
+      // 成功不提示：页签黄点消失本身就是「已保存」的反馈，再弹 toast 是噪音。
+      // （保存失败仍要提示——那是用户必须知道的异常。）
       return true;
     } catch (e) {
       setError(`${t('saveFailed')}: ${(e as Error).message}`);
@@ -588,7 +588,7 @@ export const useEditorStore = defineStore('editor', () => {
       tab.previewKind = previewKindOf(target);
       tab.mtime = mtime;
       tab.dirty = false;
-      toast(`${t('saved')} ${target}`, 'success');
+      // 不提示：页签名已变成新文件名、黄点消失，反馈已经很明确。
       // 草稿落盘后成为会话一员（有路径）→ 一次性写回偏好 + 会话
       // （lastSaveDir 也在同一份快照里；不再额外先写一次偏好，避免冗余 PUT）。
       persistSession();

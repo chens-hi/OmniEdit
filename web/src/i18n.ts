@@ -13,7 +13,6 @@ const dict = {
   save: { zh: '保存', en: 'Save' },
   saveShortcut: { zh: '保存 (Ctrl+S)', en: 'Save (Ctrl+S)' },
   newFile: { zh: '新建', en: 'New' },
-  saved: { zh: '已保存', en: 'Saved' },
   loading: { zh: '加载中…', en: 'Loading…' },
   untitled: { zh: '无标题', en: 'Untitled' },
   openFailed: { zh: '打开失败', en: 'Open failed' },

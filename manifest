@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.6.5
+version=0.6.6
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.6.5: 状态栏不再承载任何提示——打开/保存/重载/报错统一走顶部 tips；状态栏仅保留文件信息展示
+changelog=0.6.6: 保存成功不再弹提示——页签黄点消失即为反馈；另存为同理
