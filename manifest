@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.5.98
+version=0.5.99
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.5.98: 预览内链接点击改为复制+toast 提示（不再导航，修复 webview 就地跳转冲掉界面）；预览区右键只有复制
+changelog=0.5.99: 编辑器弃用 oneDark，改全 CSS 变量统一主题——编辑区与预览/UI 主题色彻底同源，暗浅自动切换

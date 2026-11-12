@@ -20,7 +20,6 @@ import type { Command } from '@codemirror/view';
 // tabSize 是 EditorState 静态 facet
 const tabSizeFacet = EditorState.tabSize;
 import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
-import { oneDark } from '@codemirror/theme-one-dark';
 import { languageExtensionFor } from './language';
 import { useEditorStore } from './store';
 import { pathFromLocation } from './api';
@@ -45,7 +44,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.98';
+const appVersion = '0.5.99';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -111,27 +110,37 @@ let view: EditorView | null = null;
 let mountedId = 0;
 
 /**
- * 浅色 CodeMirror 编辑器主题：补齐前景/选区/光标/当前行/行号槽取色。
- * 暗色沿用 oneDark（已含这些），浅色此前为空（仅 CSS 底色），这里显式定义保证 token 落在合适底色。
+ * CodeMirror 编辑器主题：全 CSS 变量（--bg/--fg/--accent/--toolbar-bg…），
+ * 暗浅共用一套——主题切换由 <html data-theme> 的变量驱动，无需重建/重配扩展。
+ * 弃用 oneDark：其底色 #282c34 与应用 --bg #1e1e1e 不一致，导致预览（走 --bg）
+ * 与编辑区色差跳变；语法高亮调色板也按 --bg 底设计，统一后完全同源。
  */
-function lightEditorTheme() {
-  return EditorView.theme({
-    '&': { color: '#24292e', backgroundColor: '#ffffff' },
-    '.cm-content': { caretColor: '#0969da' },
-    '.cm-cursor, .cm-dropCursor': { borderLeftColor: '#0969da' },
-    '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
-      backgroundColor: '#b6d7ff',
-    },
-    '.cm-activeLine': { backgroundColor: 'rgba(9, 105, 218, 0.06)' },
-    '.cm-gutters': { backgroundColor: '#f6f8fa', color: '#6e7781', border: 'none' },
-    '.cm-activeLineGutter': { backgroundColor: 'rgba(9, 105, 218, 0.10)', color: '#24292e' },
-    '.cm-selectionMatch': { backgroundColor: '#b6d7ff88' },
-  });
-}
+const appEditorThemeExt = EditorView.theme({
+  '&': { color: 'var(--fg)', backgroundColor: 'var(--bg)' },
+  '.cm-content': { caretColor: 'var(--accent)' },
+  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--accent)' },
+  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
+    backgroundColor: 'color-mix(in srgb, var(--accent) 30%, transparent)',
+  },
+  '.cm-activeLine': { backgroundColor: 'color-mix(in srgb, var(--fg) 5%, transparent)' },
+  '.cm-gutters': { backgroundColor: 'var(--toolbar-bg)', color: 'var(--fg-muted)', border: 'none' },
+  '.cm-activeLineGutter': {
+    backgroundColor: 'color-mix(in srgb, var(--fg) 8%, transparent)',
+    color: 'var(--fg)',
+  },
+  '.cm-lineNumbers .cm-gutterElement': { color: 'var(--fg-muted)' },
+  '.cm-foldPlaceholder': {
+    backgroundColor: 'var(--toolbar-bg)',
+    border: 'none',
+    color: 'var(--fg-muted)',
+  },
+  '.cm-selectionMatch': { backgroundColor: 'color-mix(in srgb, var(--accent) 25%, transparent)' },
+});
 
-/** 当前主题对应的 CodeMirror 主题扩展。暗色用 oneDark，浅色用上面的浅色主题。 */
+/** 当前主题对应的 CodeMirror 主题扩展（暗浅同主题，变量自动切换）。 */
 function cmThemeFor(t: 'dark' | 'light') {
-  return t === 'dark' ? [oneDark] : [lightEditorTheme()];
+  void t;
+  return [appEditorThemeExt];
 }
 
 /** 从编辑器 state 计算光标行列（1-based，状态栏展示）。 */

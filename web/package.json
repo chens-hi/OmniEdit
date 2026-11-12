@@ -28,7 +28,6 @@
     "@codemirror/legacy-modes": "^6.5.5",
     "@codemirror/search": "^6.7.2",
     "@codemirror/state": "^6.7.6",
-    "@codemirror/theme-one-dark": "^6.1.2",
     "@codemirror/view": "^6.43.15",
     "@lezer/highlight": "^1.2.5",
     "@trimjs/web-app": "^0.5.0",

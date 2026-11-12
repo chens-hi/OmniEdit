@@ -329,9 +329,8 @@ body,
   border: none;
 }
 
-/* oneDark 主题在同特异性（0,2,0）下「后注入」border-bottom: 2px solid black，
-   会按级联顺序盖掉上面的 border:none——面板容器下方出现一条纯黑线。
-   加 .editor-host 提到 (0,3,0) 压过它，彻底去掉容器黑边。 */
+/* 主题扩展可能注入容器边框（历史上 oneDark 后注入 border-bottom 出黑线）。
+   加 .editor-host 提高特异性压掉容器边框，搜索面板保持无边框。 */
 .editor-host .cm-panels.cm-panels-top {
   border: none;
 }
