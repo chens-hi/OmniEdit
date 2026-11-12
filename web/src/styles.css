@@ -235,7 +235,7 @@ body,
   display: flex;
   flex-direction: column;
 }
-/* 眼睛/铅笔：预览/编辑切换按钮，绝对定位于编辑区右上角 */
+/* 眼睛/铅笔：预览/编辑切换按钮，悬浮可拖拽（默认右上角，拖后吸附边缘并记忆位置） */
 .preview-toggle {
   position: absolute;
   top: 8px;
@@ -254,6 +254,7 @@ body,
   cursor: pointer;
   padding: 0;
   line-height: 1;
+  touch-action: none; /* 拖拽时禁用浏览器触摸手势，避免滚动/选中干扰 */
 }
 .preview-toggle:hover {
   border-color: var(--accent);

@@ -45,7 +45,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.88';
+const appVersion = '0.5.89';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -509,6 +509,94 @@ const editorCtxItems = computed(() => {
 /** 是否正在显示预览（预览态：整个编辑区被预览替换）。 */
 const previewShowing = computed(() => showPreview.value && !!store.activeTab?.previewKind);
 
+// ---- 预览/编辑悬浮按钮：可拖拽，点按切换，拖拽后吸附左右边缘，位置持久化 ----
+const TOGGLE_POS_KEY = 'omniedit.previewTogglePos';
+const TOGGLE_SIZE = 32;        // 按钮边长（px，与 CSS 一致）
+const TOGGLE_MARGIN = 10;      // 吸附到边缘时的留白
+const TOGGLE_DRAG_THRESHOLD = 6; // 区分点按/拖拽的移动阈值
+
+const toggleBtn = ref<HTMLElement | null>(null);
+// 按钮相对 editor-area 左上的位置；null = 默认右上角（CSS top/right）。
+const togglePos = ref<{ x: number; y: number } | null>(null);
+let toggleDrag: {
+  pointerId: number; startX: number; startY: number;
+  origLeft: number; origTop: number; moved: boolean;
+} | null = null;
+
+function loadTogglePos() {
+  try {
+    const raw = localStorage.getItem(TOGGLE_POS_KEY);
+    if (!raw) return;
+    const p = JSON.parse(raw);
+    if (p && typeof p.x === 'number' && typeof p.y === 'number') togglePos.value = { x: p.x, y: p.y };
+  } catch { /* 忽略损坏数据 */ }
+}
+function saveTogglePos() {
+  try {
+    if (togglePos.value) localStorage.setItem(TOGGLE_POS_KEY, JSON.stringify(togglePos.value));
+  } catch { /* ignore */ }
+}
+/** 把按钮位置钳制在 editor-area 内（不出屏）。 */
+function clampToggle(x: number, y: number): { x: number; y: number } {
+  const parent = toggleBtn.value?.offsetParent as HTMLElement | null;
+  const w = parent?.clientWidth ?? 0;
+  const h = parent?.clientHeight ?? 0;
+  const maxX = Math.max(0, w - TOGGLE_SIZE - TOGGLE_MARGIN);
+  const maxY = Math.max(0, h - TOGGLE_SIZE - TOGGLE_MARGIN);
+  return {
+    x: Math.min(Math.max(x, TOGGLE_MARGIN), maxX),
+    y: Math.min(Math.max(y, TOGGLE_MARGIN), maxY),
+  };
+}
+/** 拖拽释放：吸附到最近的左/右边缘（保留纵向位置）。 */
+function snapToggleToEdge() {
+  const cur = togglePos.value;
+  if (!cur) return;
+  const parent = toggleBtn.value?.offsetParent as HTMLElement | null;
+  const w = parent?.clientWidth ?? 0;
+  const x = cur.x + TOGGLE_SIZE / 2 < w / 2 ? TOGGLE_MARGIN : w - TOGGLE_SIZE - TOGGLE_MARGIN;
+  togglePos.value = clampToggle(x, cur.y);
+  saveTogglePos();
+}
+function onTogglePointerDown(e: PointerEvent) {
+  const btn = e.currentTarget as HTMLElement;
+  const parent = btn.offsetParent as HTMLElement;
+  const parentRect = parent.getBoundingClientRect();
+  const rect = btn.getBoundingClientRect();
+  toggleDrag = {
+    pointerId: e.pointerId,
+    startX: e.clientX, startY: e.clientY,
+    origLeft: rect.left - parentRect.left,
+    origTop: rect.top - parentRect.top,
+    moved: false,
+  };
+  window.addEventListener('pointermove', onTogglePointerMove);
+  window.addEventListener('pointerup', onTogglePointerUp);
+  window.addEventListener('pointercancel', onTogglePointerUp);
+}
+function onTogglePointerMove(e: PointerEvent) {
+  if (!toggleDrag || e.pointerId !== toggleDrag.pointerId) return;
+  const dx = e.clientX - toggleDrag.startX;
+  const dy = e.clientY - toggleDrag.startY;
+  if (!toggleDrag.moved && Math.hypot(dx, dy) < TOGGLE_DRAG_THRESHOLD) return;
+  toggleDrag.moved = true;
+  togglePos.value = clampToggle(toggleDrag.origLeft + dx, toggleDrag.origTop + dy);
+}
+function onTogglePointerUp(e: PointerEvent) {
+  if (!toggleDrag || e.pointerId !== toggleDrag.pointerId) return;
+  const moved = toggleDrag.moved;
+  window.removeEventListener('pointermove', onTogglePointerMove);
+  window.removeEventListener('pointerup', onTogglePointerUp);
+  window.removeEventListener('pointercancel', onTogglePointerUp);
+  toggleDrag = null;
+  if (!moved) {
+    // 点按：切换预览/编辑
+    showPreview.value = !showPreview.value;
+    return;
+  }
+  snapToggleToEdge();
+}
+
 onMounted(async () => {
   // 初始化主题（跟随宿主深/浅色）；失败保持默认暗色，不阻塞编辑器。
   void initTheme();
@@ -516,6 +604,8 @@ onMounted(async () => {
   void initLang();
   // 启动文件变更推送监听（外部修改后自动刷新/提示）。
   startFileWatch();
+  // 恢复预览/编辑悬浮按钮的上次位置。
+  loadTogglePos();
   // 拉取后端偏好（菜单设置/上次保存目录）并恢复上次会话的标签。
   // 失败不阻塞：各项回落 localStorage 缓存/默认值。
   await store.initPrefs();
@@ -559,12 +649,15 @@ onMounted(async () => {
               :content="store.activeTab.content"
             />
           </div>
-          <!-- 眼睛/铅笔：预览/编辑切换（仅可预览类型 md/htm/html 显示），绝对定位于编辑区右上角 -->
+          <!-- 眼睛/铅笔：预览/编辑切换（仅可预览类型 md/htm/html 显示），悬浮可拖拽、吸附左右边缘、位置持久化 -->
           <button
             v-if="store.activeTab?.previewKind"
+            ref="toggleBtn"
             class="preview-toggle"
+            :class="{ dragging: toggleDrag?.moved }"
+            :style="togglePos ? { left: togglePos.x + 'px', top: togglePos.y + 'px', right: 'auto' } : undefined"
             :title="showPreview ? t('toggleEdit') : t('togglePreview')"
-            @click="showPreview = !showPreview"
+            @pointerdown="onTogglePointerDown"
           >{{ showPreview ? '✎' : '👁' }}</button>
         </div>
       </div>

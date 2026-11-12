@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.5.88
+version=0.5.89
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.5.88: 修复移动端 HTML 预览空白（iframe sandbox 加 allow-same-origin）
+changelog=0.5.89: 预览/编辑切换按钮改为悬浮可拖拽（点按切换、拖拽吸附边缘、位置持久化）
