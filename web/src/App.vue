@@ -44,7 +44,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.6.6';
+const appVersion = '0.6.7';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -287,6 +287,9 @@ watch(
     }
     // 切页签回到自动预览默认；眼/笔可再手动覆盖当前页。
     showPreview.value = store.autoPreview && tab.previewKind !== null;
+    // 该页签在后台被外部改过（当时只打了标记没打扰）：现在用户看着它了，
+    // 补问一次「重载 / 保持当前」。
+    if (tab.externalChanged) void store.promptExternalChange(tab.id);
   },
 );
 

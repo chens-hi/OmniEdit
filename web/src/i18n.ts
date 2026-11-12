@@ -148,11 +148,12 @@ const dict = {
   placeholderDblClick: { zh: '双击空白处新建页签', en: 'Double-click to open a new tab' },
 
   // 外部变更
+  externalChangeTitle: { zh: '文件已被修改', en: 'File changed on disk' },
   fileChangedReload: { zh: '重新加载', en: 'Reload' },
-  fileChangedKeep: { zh: '保留我的修改', en: 'Keep my changes' },
+  fileChangedKeep: { zh: '保持当前', en: 'Keep current' },
   externalChangePrompt: {
-    zh: '已被外部修改，是否重新加载？（保留你的未保存修改将覆盖外部改动）',
-    en: 'was changed externally. Reload it? (Keeping your unsaved changes will overwrite the external edit.)',
+    zh: '已被外部修改，是否重新加载？',
+    en: 'was changed externally. Reload it?',
   },
   reloaded: { zh: '已从磁盘重新加载', en: 'Reloaded from disk' },
 } as const;

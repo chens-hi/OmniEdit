@@ -122,6 +122,13 @@ export interface Tab {
   indent: 'spaces' | 'tabs' | 'mixed';
   /** 缩进宽度：spaces/mixed = 检测到的空格单元；tabs = 渲染宽度（固定 4）。 */
   indentWidth: number;
+  /**
+   * 磁盘内容已被外部修改，但用户还没决定是重载还是保留。
+   * 非活动页签收到变更时只置此标记（不弹框打扰），切到该页签时再询问。
+   */
+  externalChanged?: boolean;
+  /** 询问框是否正在展示（防重入，不持久化、不参与模板渲染）。 */
+  externalPrompting?: boolean;
 }
 
 export const useEditorStore = defineStore('editor', () => {
@@ -696,6 +703,7 @@ export const useEditorStore = defineStore('editor', () => {
       tab.content = file.content;
       tab.mtime = file.mtime;
       tab.dirty = false;
+      tab.externalChanged = false;
       tab.readonly = false;
       tab.hasBom = file.encoding === 'utf-8-bom';
       tab.encoding = file.encoding ?? 'utf-8';
@@ -706,6 +714,38 @@ export const useEditorStore = defineStore('editor', () => {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * promptExternalChange 询问用户「外部已修改，重载还是保持当前」。
+   *
+   * 只有活动页签会走到这里（fileWatch 对非活动页签只打标记，切页时再问）。
+   * 无论本地有没有未保存修改都询问——磁盘内容变了，取舍应由用户决定；
+   * 选「保持当前」则保留内存中的版本（下次保存会覆盖磁盘内容）。
+   */
+  async function promptExternalChange(id: number): Promise<void> {
+    const tab = tabById(id);
+    if (!tab || !tab.externalChanged) return;
+    // 防重入：询问期间同一标签又来变更，不叠加第二个对话框。
+    if (tab.externalPrompting) return;
+    tab.externalPrompting = true;
+    try {
+      const reload = await confirm(`${tab.name} ${t('externalChangePrompt')}`, {
+        title: t('externalChangeTitle'),
+        confirmText: t('fileChangedReload'),
+        cancelText: t('fileChangedKeep'),
+        danger: tab.dirty, // 有未保存修改时重载会丢弃，标红警示
+      });
+      if (reload) {
+        await reloadFile(tab.path);
+      } else {
+        // 保留当前：清掉标记，避免每次切页都再问一遍。
+        tab.externalChanged = false;
+      }
+      if (reload) toast(`${t('reloaded')}: ${tab.name}`, 'success');
+    } finally {
+      tab.externalPrompting = false;
     }
   }
 
@@ -905,7 +945,7 @@ export const useEditorStore = defineStore('editor', () => {
     openFile, saveActive, saveTab, closeTab, newUntitled, setError,
     setContentProvider, getTabContent, markDirtyLight, syncContent,
     doSaveAs, closeSaveAs,
-    reloadFile, tabById,
+    reloadFile, tabById, promptExternalChange,
     initPrefs, persistSession, prefsBackendOk, resetToDefaults,
     booting,
   };

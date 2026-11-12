@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.6.6
+version=0.6.7
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.6.6: 保存成功不再弹提示——页签黄点消失即为反馈；另存为同理
+changelog=0.6.7: 外部修改提示改为「仅在页签激活时询问」——活动页签立即弹「重新加载/保持当前」，非活动页签只做标记、切到该页签时才问；不再静默自动重载

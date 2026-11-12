@@ -1,13 +1,15 @@
 import { useEditorStore } from './store';
-import { t } from './i18n';
 
 /**
  * 文件变更推送客户端。
  *
  * 连接后端 /api/ws，收到 file-changed 事件时按当前标签状态处理：
  *   - 未打开该文件：忽略（后台监控，不影响）；
- *   - 已打开且无未保存修改：自动从磁盘重新加载；
- *   - 已打开但有未保存修改：弹确认，让用户选择重载或保留自己的修改。
+ *   - 已打开但**不是活动页签**：只打标记（tab.externalChanged=true），
+ *     不弹任何确认框、不自动重载——用户不在看它，弹窗会打断当前工作；
+ *     等切到该页签时再询问（见 store 的 externalChanged 处理）；
+ *   - 已打开且是活动页签：立刻询问「重新加载 / 保持当前」，
+ *     无论本地有没有未保存修改都询问（磁盘内容变了，该由用户决定）。
  *
  * 断线后自动重连（指数退避上限 10s），避免 NAS 短暂重启后推送失效。
  */
@@ -28,25 +30,20 @@ async function handleChange(path: string, mtime: string) {
   const store = useEditorStore();
   const tab = store.tabs.find(tb => tb.path === path);
   if (!tab) return; // 未打开：忽略
+  // 忽略自己保存触发的回声：后端推送的 mtime 与本地刚写回的一致，
+  // 说明这是本客户端的写入而非真外部修改。
+  if (mtime && tab.mtime && mtime === tab.mtime) return;
 
-  if (!tab.dirty) {
-    // 无未保存修改：静默重新加载。
-    const ok = await store.reloadFile(path);
-    if (ok && path === store.activePath) {
-      store.toast(`${t('reloaded')}: ${tab.name}`, 'success');
-    }
+  if (tab.id !== store.activeId) {
+    // 非活动页签：只打标记，不打扰。切到该页时由 App 触发询问。
+    tab.externalChanged = true;
     return;
   }
 
-  // 有未保存修改：让用户决定（统一确认框，替代 window.confirm）。
-  const reload = await store.confirm(`${tab.name} ${t('externalChangePrompt')}`, {
-    confirmText: t('fileChangedReload'),
-    cancelText: t('fileChangedKeep'),
-  });
-  if (reload) {
-    await store.reloadFile(path);
-  }
-  // 选择保留则不做任何事，保留用户内存中的修改。
+  // 活动页签：先打标记再问（promptExternalChange 以该标记为前提，
+  // 且它同时承担「是否有未决的外部变更」这一状态）。
+  tab.externalChanged = true;
+  await store.promptExternalChange(tab.id);
   void mtime;
 }
 
