@@ -104,6 +104,21 @@ body,
   color: var(--fg);
   font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
   font-size: 13px;
+  /* 全局默认不可选中：编辑器类应用里，误拖菜单/页签/状态栏会拖出蓝底选区，
+     既难看又会干扰拖拽手势。只在需要的地方重新开启（见下方 user-select 段）。
+     注意：输入框必须能用，靠 user-select: text 单独放行。 */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ---- 允许选中的区域（其余一律继承 .app 的 none） ----
+   1) 正文内容：编辑区（CodeMirror 自带可选中，此处显式兜底）
+   2) 预览区：用户需要复制文档里的文字
+   3) 表单控件：输入框/文本域必须能选中与编辑，否则无法使用
+   用 :where() 零特异性包裹，方便未来单个组件用更高优先级覆盖。 */
+:where(.cm-content, .cm-line, .pv-doc, input, textarea, [contenteditable='true']) {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .btn {
