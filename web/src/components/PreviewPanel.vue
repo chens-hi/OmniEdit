@@ -5,6 +5,7 @@ import DOMPurify from 'dompurify';
 import { APP_BASE } from '../api';
 import { useEditorStore } from '../store';
 import { t } from '../i18n';
+import { PREVIEW_MAX_BYTES } from '../language';
 
 const store = useEditorStore();
 
@@ -131,8 +132,13 @@ function onPreviewClick(e: MouseEvent) {
   store.toast(t('linkCopied'), 'success');
 }
 
-// 渲染输出：markdown 解析后净化；html 直接净化；随后重写相对资源。
+// 超大保护：>1MB 不渲染（全量 DOM 渲染会阻塞主线程数百毫秒且内存放大数十倍），
+// 显示统一提示。悬浮按钮不受影响（按类型显示，规则不变）。
+const oversize = computed(() => (debounced.value?.length ?? 0) > PREVIEW_MAX_BYTES);
+
+// 渲染输出：markdown 解析后净化；html 直接净化；随后重写相对资源。超限短路不 parse。
 const rendered = computed(() => {
+  if (oversize.value) return '';
   const src = debounced.value ?? '';
   const html = props.kind === 'markdown'
     ? DOMPurify.sanitize(marked.parse(src, { async: false, gfm: true, breaks: true }) as string)
@@ -142,7 +148,9 @@ const rendered = computed(() => {
 </script>
 
 <template>
-  <div class="pv-doc" :class="kind === 'markdown' ? 'pv-md' : 'pv-html'" v-html="rendered" @click="onPreviewClick" />
+  <!-- 超大内容：统一提示，不渲染（预览与编辑阈值分开：编辑 10MB / 预览 1MB）。 -->
+  <div v-if="oversize" class="pv-doc pv-paused">{{ t('previewTooLarge') }}</div>
+  <div v-else class="pv-doc" :class="kind === 'markdown' ? 'pv-md' : 'pv-html'" v-html="rendered" @click="onPreviewClick" />
 </template>
 
 <style scoped>
@@ -185,6 +193,14 @@ const rendered = computed(() => {
   margin-left: 0;
   padding-left: 12px;
   color: var(--fg-muted);
+}
+/* 超大内容暂停提示 */
+.pv-paused {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-muted);
+  font-size: 13px;
 }
 /* html 预览：排版交给文档自带样式；仅做溢出防护与基础可读性兜底 */
 .pv-html :deep(img),

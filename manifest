@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.5.99
+version=0.6.0
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.5.99: 编辑器弃用 oneDark，改全 CSS 变量统一主题——编辑区与预览/UI 主题色彻底同源，暗浅自动切换
+changelog=0.6.0: 大文件支持——打开上限 5MB→10MB（超限明确提示，移除截断只读预览）；每键 O(n) 性能优化（内容 provider，10MB 内编辑流畅）；预览超 1MB 显示提示不渲染

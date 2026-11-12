@@ -150,3 +150,10 @@ export function previewKind(filename: string): 'markdown' | 'html' | null {
       return null;
   }
 }
+
+/**
+ * 预览内容上限（1 MB）：超过则预览显示「内容过大」提示，不渲染。
+ * 预览是全量 DOM 渲染（非编辑器的视口增量），>1MB 单次更新会阻塞主线程
+ * 数百毫秒且内存放大数十倍；编辑阈值（10MB）与预览阈值分开，各管各的。
+ */
+export const PREVIEW_MAX_BYTES = 1 << 20;

@@ -115,7 +115,7 @@ func TestAuthorizedRoots_ReturnsCopy(t *testing.T) {
 }
 
 func TestRead_FileNotFound(t *testing.T) {
-	_, err := Read(filepath.Join(os.TempDir(), "omniedit_no_such_file_xyz"), ReadOptions{})
+	_, err := Read(filepath.Join(os.TempDir(), "omniedit_no_such_file_xyz"))
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("期望 ErrNotFound，实际 %v", err)
 	}
@@ -182,7 +182,7 @@ func TestRead_Encoding(t *testing.T) {
 	if err := os.WriteFile(bomPath, append([]byte{0xEF, 0xBB, 0xBF}, []byte("hello")...), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	meta, err := Read(bomPath, ReadOptions{})
+	meta, err := Read(bomPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestRead_Encoding(t *testing.T) {
 	if err := os.WriteFile(cnPath, []byte("中文内容\n第二行"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	meta, err = Read(cnPath, ReadOptions{})
+	meta, err = Read(cnPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func TestRead_Encoding(t *testing.T) {
 	if err := os.WriteFile(gbkPath, gbkBytes, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	meta, err = Read(gbkPath, ReadOptions{})
+	meta, err = Read(gbkPath)
 	if err != nil {
 		t.Fatalf("GBK 文件应正常解码，实际 %v", err)
 	}
@@ -225,7 +225,7 @@ func TestRead_Encoding(t *testing.T) {
 	if err := os.WriteFile(crlfPath, []byte("a\r\nb\r\nc"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	meta, err = Read(crlfPath, ReadOptions{})
+	meta, err = Read(crlfPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -409,7 +409,7 @@ func TestRead_GB18030_RoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	meta, err := Read(p, ReadOptions{})
+	meta, err := Read(p)
 	if err != nil {
 		t.Fatalf("GB18030 文件应能读取，实际 %v", err)
 	}
@@ -433,7 +433,7 @@ func TestRead_GB18030_RoundTrip(t *testing.T) {
 	}
 
 	// 再次读取：仍是 gb18030、内容一致。
-	meta2, err := Read(p, ReadOptions{})
+	meta2, err := Read(p)
 	if err != nil || meta2.Encoding != "gb18030" || meta2.Content != "中文测试" {
 		t.Errorf("二次读取不符: encoding=%q content=%q err=%v", meta2.Encoding, meta2.Content, err)
 	}

@@ -321,40 +321,10 @@ export const useEditorStore = defineStore('editor', () => {
     activeId.value = tab.id;
     try {
       const { file } = await readFile(path);
-      if (file.tooLarge) {
-        tabs.value = tabs.value.filter(x => x.id !== tab.id);
-        if (activeId.value === tab.id) activeId.value = tabs.value[tabs.value.length - 1]?.id ?? 0;
-        const ok = await confirm(
-          `「${fileNameOf(path)}」${(file.size / 1024 / 1024).toFixed(1)} MB — ${t('largeFileConfirm')}`,
-        );
-        if (!ok) {
-          status.value = t('ready');
-          return;
-        }
-        const previewDraft: Tab = {
-          id: ++tabSeq, path, name: fileNameOf(path), content: '', mtime: '',
-          dirty: false, isMarkdown: isMd(path), previewKind: previewKindOf(path), loading: true, readonly: true,
-          hasBom: false,
-          encoding: 'utf-8',
-          lineEnding: '',
-          indent: 'spaces',
-          indentWidth: 4,
-        };
-        tabs.value.push(previewDraft);
-        const previewTab = tabById(previewDraft.id)!;
-        activeId.value = previewTab.id;
-        const res = await readFile(path, true);
-        previewTab.content = res.file.content;
-        previewTab.mtime = res.file.mtime;
-        previewTab.loading = false;
-        previewTab.readonly = true;
-        status.value = `${t('opened')} ${res.file.displayPath ?? res.file.path}（${t('readOnlyPreview')}）`;
-        return;
-      }
       tab.content = file.content;
       tab.mtime = file.mtime;
       tab.loading = false;
-      tab.readonly = file.truncated === true;
+      tab.readonly = false;
       tab.hasBom = file.encoding === 'utf-8-bom';
       tab.encoding = file.encoding ?? 'utf-8';
       tab.lineEnding = file.lineEnding ?? '';
@@ -462,7 +432,8 @@ export const useEditorStore = defineStore('editor', () => {
       return false;
     }
     try {
-      const { mtime } = await writeFile(tab.path, tab.content, tab.mtime, tab.hasBom, tab.encoding);
+      const content = getTabContent(id);
+      const { mtime } = await writeFile(tab.path, content, tab.mtime, tab.hasBom, tab.encoding);
       tab.mtime = mtime;
       tab.dirty = false;
       status.value = activeId.value === tab.id ? t('saved') : `${t('saved')} ${tab.name}`;
@@ -479,7 +450,8 @@ export const useEditorStore = defineStore('editor', () => {
     if (!tab) return;
     saveAsVisible.value = false;
     try {
-      const { mtime } = await writeFile(target, tab.content, '', tab.hasBom, tab.encoding);
+      const content = getTabContent(tab.id);
+      const { mtime } = await writeFile(target, content, '', tab.hasBom, tab.encoding);
       lastSaveDir.value = target.replace(/[\\/][^\\/]+$/, '');
       persistPrefs();
       // tab 来自 activeTab computed（响应式代理），赋值安全。
@@ -544,7 +516,7 @@ export const useEditorStore = defineStore('editor', () => {
       const t = tabById(id);
       if (!t || !t.dirty) continue;
       if (t.path) toSave.push({ id, name: t.name });
-      else if (t.content.trim() !== '') toDiscard.push({ id, name: t.name });
+      else if (getTabContent(id).trim() !== '') toDiscard.push({ id, name: t.name });
       // 空草稿：无损失，直接忽略不进列表
     }
     if (toSave.length === 0 && toDiscard.length === 0) {
@@ -596,7 +568,7 @@ export const useEditorStore = defineStore('editor', () => {
       tab.content = file.content;
       tab.mtime = file.mtime;
       tab.dirty = false;
-      tab.readonly = file.truncated === true;
+      tab.readonly = false;
       tab.hasBom = file.encoding === 'utf-8-bom';
       tab.encoding = file.encoding ?? 'utf-8';
       tab.lineEnding = file.lineEnding ?? '';
@@ -609,12 +581,33 @@ export const useEditorStore = defineStore('editor', () => {
     }
   }
 
-  function markDirty(id: number, content: string) {
+  // ---- 编辑器内容 provider（大文件性能核心：编辑期不逐键同步全文）----
+  // 每键只置 dirty（O(1)）；全文由 App 注册的 provider 在关键点按需拉取
+  // （保存/另存/空草稿判定），tab.content 仅作「非活动标签」的快照缓存。
+  let contentProvider: ((id: number) => string | null) | null = null;
+
+  /** App 挂载编辑器时注册：按 id 返回该标签当前编辑器全文；非挂载标签返回 null。 */
+  function setContentProvider(fn: (id: number) => string | null) {
+    contentProvider = fn;
+  }
+
+  /** 取标签当前全文：优先经 provider 拉活动编辑器内容，回退快照（非活动标签）。 */
+  function getTabContent(id: number): string {
+    const fromEditor = contentProvider?.(id);
+    if (fromEditor != null) return fromEditor;
+    return tabById(id)?.content ?? '';
+  }
+
+  /** 每键编辑标记（轻量）：只置 dirty，不触碰 content（消灭每键 O(n) toString）。 */
+  function markDirtyLight(id: number) {
     const tab = tabById(id);
-    if (tab) {
-      tab.content = content;
-      tab.dirty = true;
-    }
+    if (tab) tab.dirty = true;
+  }
+
+  /** 把当前编辑器全文写回 tab.content 快照（切页签 / 预览防抖同步时由 App 调）。 */
+  function syncContent(id: number, content: string) {
+    const tab = tabById(id);
+    if (tab) tab.content = content;
   }
 
   // ---- 会话恢复：记录「打开未关闭」的标签，下次自动还原（VS Code 式） ----
@@ -775,7 +768,8 @@ export const useEditorStore = defineStore('editor', () => {
     setShowSpaces, setShowTabs, setShowLineBreaks, setAutoPreview,
     builtinFonts: BUILTIN_FONTS,
     openViaPicker,
-    openFile, saveActive, saveTab, closeTab, markDirty, newUntitled, setError,
+    openFile, saveActive, saveTab, closeTab, newUntitled, setError,
+    setContentProvider, getTabContent, markDirtyLight, syncContent,
     doSaveAs, closeSaveAs,
     reloadFile, tabById,
     initPrefs, persistSession, prefsBackendOk, resetToDefaults,

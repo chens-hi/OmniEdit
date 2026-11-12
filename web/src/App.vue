@@ -20,7 +20,7 @@ import type { Command } from '@codemirror/view';
 // tabSize 是 EditorState 静态 facet
 const tabSizeFacet = EditorState.tabSize;
 import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
-import { languageExtensionFor } from './language';
+import { languageExtensionFor, PREVIEW_MAX_BYTES } from './language';
 import { useEditorStore } from './store';
 import { pathFromLocation } from './api';
 import { initTheme, theme } from './theme';
@@ -44,9 +44,38 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.99';
+const appVersion = '0.6.0';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
+
+// ---- 大文件性能：内容快照同步 + 文档统计 ----
+// docStats：行数 O(1)（CM doc.lines）每键更新；字节数只在同步点算一次
+// （防抖 500ms / 切页签 flush / 打开文件初始化），不在每键路径上。
+const docStats = ref({ lines: 0, bytes: 0 });
+let contentSyncTimer: number | undefined;
+
+/** 把当前编辑器全文写回 store 快照并刷新统计（关键点单次 O(n)）。 */
+function flushContent() {
+  const id = mountedId;
+  if (!view || !id) return;
+  const text = view.state.doc.toString();
+  store.syncContent(id, text);
+  if (store.activeTab?.id === id) {
+    docStats.value = { lines: view.state.doc.lines, bytes: new Blob([text]).size };
+  }
+}
+
+/**
+ * 预览真正在渲染内容（可见且 ≤1MB）时，防抖 500ms 同步一次快照给预览
+ * （预览内容来自 tab.content 快照）；其余场景零成本——保存/切页签/关闭
+ * 由关键点 provider 拉取兜底，预览暂停态不需要新鲜内容。
+ */
+function scheduleContentSync() {
+  const tab = store.activeTab;
+  if (!showPreview.value || !tab?.previewKind || tab.content.length > PREVIEW_MAX_BYTES) return;
+  window.clearTimeout(contentSyncTimer);
+  contentSyncTimer = window.setTimeout(flushContent, 500);
+}
 
 // CodeMirror 主题热切换单元格：宿主切深/浅色时重配。
 const themeCompartment = new Compartment();
@@ -169,8 +198,11 @@ function mountEditor(tab: { id: number; content: string; path: string; name: str
     }
     // 只把「用户输入」计为编辑：程序化同步（docSync 标记）与未挂载完成的
     // 更新一律忽略——否则新打开的文件刚加载就会点亮未保存黄点。
+    // 每键轻量化：只置 dirty + O(1) 行数（大文件性能，全文走 provider 关键点拉取）。
     if (u.docChanged && mountedId && !u.transactions.some(tr => tr.annotation(docSync))) {
-      store.markDirty(mountedId, u.state.doc.toString());
+      store.markDirtyLight(mountedId);
+      docStats.value = { lines: u.state.doc.lines, bytes: docStats.value.bytes };
+      scheduleContentSync();
     }
   });
   view = new EditorView({
@@ -213,6 +245,8 @@ function mountEditor(tab: { id: number; content: string; path: string; name: str
   // debug 钩子：排障/自动化测试用（必须在 new EditorView 之后赋值）
   (window as unknown as { __omnieditView?: EditorView | null }).__omnieditView = view;
   syncCursor(view.state);
+  // 初始化状态栏统计（行数 O(1)；字节数按打开内容一次算好）。
+  docStats.value = { lines: view.state.doc.lines, bytes: new Blob([tab.content]).size };
 }
 
 // 宿主主题变化时热切换 CodeMirror 配色（编辑器外壳 + 语法高亮 token 配色）。
@@ -239,6 +273,7 @@ watch(
       return;
     }
     if (tab.id !== mountedId) {
+      flushContent(); // 旧编辑器全文写回快照（非活动标签的数据源，关键点）
       mountEditor(tab);
     } else if (view) {
       // 已挂载的编辑器切到只读/可写标签时，同步可编辑性。
@@ -252,7 +287,7 @@ watch(
 );
 
 // 编辑器内容被 store 更新（如外部变更重载）时同步到 CodeMirror。
-// 用户输入不会走到这里（输入只改 doc，不改 store，除非 markDirty）。
+// 用户输入不会走到这里（输入只置 dirty 不改快照；快照由 reload/flush 写入）。
 watch(
   () => store.activeTab?.content,
   (content) => {
@@ -267,19 +302,18 @@ watch(
         annotations: docSync.of(true),
       });
       view.scrollDOM.scrollTop = curScroll;
+      docStats.value = { lines: view.state.doc.lines, bytes: new Blob([content]).size };
     }
   },
 );
 
 // ---- 状态栏信息（全部从活动标签派生，纯展示） ----
 
-/** 文档字节数：Blob 按字符串 UTF-8 编码，与后端读到的字节数一致（GBK 等由
- * 后端转成 UTF-8 后的内存内容计算——展示的是"编辑器里的内容大小"语义）。 */
-const fileSize = computed(() => {
-  const tab = store.activeTab;
-  if (!tab) return 0;
-  return new Blob([tab.content]).size;
-});
+/**
+ * 文档字节数：docStats.bytes——Blob 按字符串 UTF-8 编码，与后端读到的一致。
+ * 大文件性能：不在每键路径上算 Blob，只在同步点（防抖 500ms/flush/打开）算一次。
+ */
+const fileSize = computed(() => store.activeTab ? docStats.value.bytes : 0);
 
 function fmtSize(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -287,11 +321,8 @@ function fmtSize(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
-const lineCount = computed(() => {
-  const tab = store.activeTab;
-  if (!tab) return 0;
-  return tab.content === '' ? 0 : tab.content.split('\n').length;
-});
+/** 行数：docStats.lines——CM doc.lines 每键 O(1) 更新（替代 split O(n)）。 */
+const lineCount = computed(() => store.activeTab ? docStats.value.lines : 0);
 
 /** 编码显示名（UTF-8 简写；BOM/ANSI 有独立记号）。 */
 const encodingLabel = computed(() => {
@@ -333,17 +364,13 @@ const cursorTitle = computed(() => {
 function onSave() {
   const tab = store.activeTab;
   if (!tab) return;
-  // 只读预览（超大文件截断）禁止保存，避免覆盖原始大文件。
+  // 只读标签禁止保存（当前无此来源，保留语义防御）。
   if (tab.readonly) return;
   // 已落盘文件：与菜单「保存」的禁用语义一致（!dirty 不动作）。
-  // 否则无改动时 Ctrl+S 也会 markDirty→写盘，表现为黄点闪一下 + 无谓更新 mtime
+  // 否则无改动时 Ctrl+S 也会写盘，表现为黄点闪一下 + 无谓更新 mtime
   // （同文件在别处打开会误报外部修改）。草稿（无路径）不受此限：Ctrl+S 直接打开另存为。
   if (tab.path && !tab.dirty) return;
-  // 把编辑器当前内容同步回 store 再保存（updateListener 已实时同步，此处兜底）。
-  if (view && tab.id === mountedId) {
-    store.markDirty(tab.id, view.state.doc.toString());
-    // markDirty 改的是同一响应式对象，无需等待。
-  }
+  // 内容由 saveTab 经 provider 拉当前编辑器全文（关键点单次 O(n)），无需预先同步。
   void store.saveActive();
 }
 
@@ -671,6 +698,9 @@ onMounted(async () => {
   startFileWatch();
   // 恢复预览/编辑悬浮按钮的上次位置。
   loadTogglePos();
+  // 注册内容 provider：store 在保存/草稿判定等关键点按 id 拉当前编辑器全文
+  // （大文件性能核心——编辑期不逐键同步，全文只在关键点单次拉取）。
+  store.setContentProvider((id) => id === mountedId && view ? view.state.doc.toString() : null);
   // 拉取后端偏好（菜单设置/上次保存目录）并恢复上次会话的标签。
   // 失败不阻塞：各项回落 localStorage 缓存/默认值。
   await store.initPrefs();

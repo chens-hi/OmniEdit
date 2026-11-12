@@ -9,7 +9,6 @@ package files
 import (
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -193,10 +192,6 @@ type ReadMeta struct {
 	// Encoding 内容编码："utf-8"（含 ASCII）或 "utf-8-bom"。
 	// 非 UTF-8 文件读取直接报错（ErrNotUTF8），不返回乱码。
 	Encoding string `json:"encoding,omitempty"`
-	// TooLarge 表示文件超过默认打开阈值，Content 为空，需前端确认后以 allowLarge 重取。
-	TooLarge bool `json:"tooLarge,omitempty"`
-	// Truncated 表示 Content 已被截断（仅返回了前 MaxPreviewBytes），应作只读预览。
-	Truncated bool `json:"truncated,omitempty"`
 	// LineEnding 行尾风格："lf" | "crlf" | "mixed" | ""（空文件/单行无换行）。
 	// 保存时按此回写，保持文件原有风格不被静默改写。
 	LineEnding string `json:"lineEnding,omitempty"`
@@ -204,19 +199,21 @@ type ReadMeta struct {
 
 // 大文件保护阈值。
 const (
-	// MaxOpenBytes 默认可完整打开的文件上限（5 MB）。超过则要求前端确认。
-	MaxOpenBytes int64 = 5 << 20
-	// MaxPreviewBytes 超大文件「只读预览」时返回的前缀长度（256 KB）。
-	MaxPreviewBytes int64 = 256 << 10
+	// MaxOpenBytes 可打开的文件上限（10 MB）。超过直接拒绝（ErrFileTooLarge），
+	// 无确认/截断预览路径——前端性能优化后 10MB 内可流畅编辑，更大的文件
+	// JSON 传输通道先成为瓶颈，明确提示比模糊处理更干净。
+	MaxOpenBytes int64 = 10 << 20
 )
 
-// ErrTooLarge 表示文件过大且未允许以预览方式打开。
-type ErrTooLarge struct {
-	Size int64
+// ErrFileTooLarge 表示文件超过打开上限，无法处理。
+type ErrFileTooLarge struct {
+	Size  int64
+	Limit int64
 }
 
-func (e ErrTooLarge) Error() string {
-	return fmt.Sprintf("文件过大（%d 字节），需确认后以预览方式打开", e.Size)
+func (e ErrFileTooLarge) Error() string {
+	return fmt.Sprintf("文件过大：%.1f MB（上限 %.0f MB），无法打开",
+		float64(e.Size)/(1<<20), float64(e.Limit)/(1<<20))
 }
 
 // ErrNotUTF8 表示文件不是有效的 UTF-8 编码（如 GBK/GB18030、Latin-1 等）。
@@ -305,15 +302,10 @@ func detectLineEnding(s string) string {
 	}
 }
 
-// ReadOptions 控制 Read 的行为。
-type ReadOptions struct {
-	// AllowLarge 允许打开超过 MaxOpenBytes 的大文件（只返回截断的只读预览）。
-	AllowLarge bool
-}
-
 // Read 读取文本文件内容（带大文件保护）。
 // 调用方需先完成路径安全与授权校验。
-func Read(absPath string, opts ReadOptions) (*ReadMeta, error) {
+// 文件超过 MaxOpenBytes 时直接返回 ErrFileTooLarge（无确认/截断预览路径）。
+func Read(absPath string) (*ReadMeta, error) {
 	info, err := os.Stat(absPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -329,44 +321,25 @@ func Read(absPath string, opts ReadOptions) (*ReadMeta, error) {
 	// 判断是否可写（应用用户视角的粗判；用户级 ACL 由 API 层用开放 API 校验）。
 	writable := info.Mode().Perm()&0o200 != 0
 
+	// 大文件保护：超过上限直接拒绝，明确提示。
+	if size > MaxOpenBytes {
+		return nil, ErrFileTooLarge{Size: size, Limit: MaxOpenBytes}
+	}
+
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return nil, err
+	}
+
 	meta := &ReadMeta{
 		Path:     absPath,
 		Size:     size,
 		ModTime:  info.ModTime().Format(time.RFC3339Nano),
 		Writable: writable,
 	}
-
-	// 大文件保护：超过阈值且未显式允许时，只返回元信息。
-	if size > MaxOpenBytes && !opts.AllowLarge {
-		meta.TooLarge = true
-		return meta, nil
-	}
-
-	// 未超阈值：完整读取。
-	if size <= MaxOpenBytes {
-		data, err := os.ReadFile(absPath)
-		if err != nil {
-			return nil, err
-		}
-		if err := decodeText(data, meta); err != nil {
-			return nil, err
-		}
-		return meta, nil
-	}
-
-	// 超阈值但已允许：只读截断预览（前 MaxPreviewBytes），标记 Truncated + 不可写。
-	f, err := os.Open(absPath)
-	if err != nil {
+	if err := decodeText(data, meta); err != nil {
 		return nil, err
 	}
-	defer f.Close()
-	buf := make([]byte, MaxPreviewBytes)
-	n, _ := io.ReadFull(f, buf)
-	if err := decodeText(buf[:n], meta); err != nil {
-		return nil, err
-	}
-	meta.Truncated = true
-	meta.Writable = false // 截断预览禁止保存，避免覆盖原始大文件
 	return meta, nil
 }
 

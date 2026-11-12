@@ -21,6 +21,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strings"
@@ -95,7 +96,6 @@ func (h *Handler) ReadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rawPath := r.URL.Query().Get("path")
-	allowLarge := r.URL.Query().Get("allowLarge") == "1"
 	absPath, err := files.CleanAndValidate(rawPath)
 	if err != nil {
 		errJSON(w, http.StatusBadRequest, err.Error())
@@ -106,11 +106,13 @@ func (h *Handler) ReadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	meta, err := files.Read(absPath, files.ReadOptions{AllowLarge: allowLarge})
+	meta, err := files.Read(absPath)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if err == files.ErrNotFound {
 			status = http.StatusNotFound
+		} else if errors.Is(err, files.ErrFileTooLarge{}) {
+			status = http.StatusRequestEntityTooLarge
 		}
 		errJSON(w, status, err.Error())
 		return
@@ -126,7 +128,7 @@ func (h *Handler) ReadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 注册文件监控：外部修改后通过 WebSocket 推送给该用户的客户端。
-	if h.Hub != nil && !meta.TooLarge {
+	if h.Hub != nil {
 		h.Hub.Watch(absPath, user.UID)
 	}
 

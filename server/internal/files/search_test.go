@@ -1,6 +1,7 @@
 package files
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,45 +28,27 @@ func makeBytes(size int) []byte {
 	return b[:size]
 }
 
-func TestRead_TooLarge_DefaultReject(t *testing.T) {
+func TestRead_TooLarge_Reject(t *testing.T) {
 	dir := t.TempDir()
 	// 创建一个超过 MaxOpenBytes 的文件。
 	big := makeFile(t, dir, "big.log", int(MaxOpenBytes)+1024)
 
-	meta, err := Read(big, ReadOptions{AllowLarge: false})
-	if err != nil {
-		t.Fatalf("Read 不应返回 error（大文件走 TooLarge 标记）: %v", err)
+	meta, err := Read(big)
+	if err == nil {
+		t.Fatal("超大文件应直接返回 ErrFileTooLarge")
 	}
-	if !meta.TooLarge {
-		t.Error("超大文件应标记 TooLarge=true")
+	var tooLarge ErrFileTooLarge
+	if !errors.As(err, &tooLarge) {
+		t.Fatalf("错误应为 ErrFileTooLarge，实际 %T: %v", err, err)
 	}
-	if meta.Content != "" {
-		t.Errorf("超大文件默认不应返回 content，实际 %d 字节", len(meta.Content))
+	if tooLarge.Size <= MaxOpenBytes {
+		t.Errorf("ErrFileTooLarge.Size 应反映真实大小，实际 %d", tooLarge.Size)
 	}
-	if meta.Size <= MaxOpenBytes {
-		t.Errorf("meta.Size 应反映真实大小，实际 %d", meta.Size)
+	if tooLarge.Limit != MaxOpenBytes {
+		t.Errorf("ErrFileTooLarge.Limit 应为 MaxOpenBytes=%d，实际 %d", MaxOpenBytes, tooLarge.Limit)
 	}
-}
-
-func TestRead_TooLarge_AllowLarge_Truncated(t *testing.T) {
-	dir := t.TempDir()
-	big := makeFile(t, dir, "big.log", int(MaxOpenBytes)+4096)
-
-	meta, err := Read(big, ReadOptions{AllowLarge: true})
-	if err != nil {
-		t.Fatalf("AllowLarge Read 失败: %v", err)
-	}
-	if meta.TooLarge {
-		t.Error("AllowLarge=true 时不应标记 TooLarge")
-	}
-	if !meta.Truncated {
-		t.Error("AllowLarge 预览应标记 Truncated=true")
-	}
-	if meta.Writable {
-		t.Error("截断预览应为只读（Writable=false）")
-	}
-	if int64(len(meta.Content)) != MaxPreviewBytes {
-		t.Errorf("预览内容应为 MaxPreviewBytes=%d，实际 %d", MaxPreviewBytes, len(meta.Content))
+	if meta != nil {
+		t.Error("超限 Read 不应返回 meta")
 	}
 }
 
@@ -73,12 +56,9 @@ func TestRead_NormalFile_FullContent(t *testing.T) {
 	dir := t.TempDir()
 	small := makeFile(t, dir, "small.txt", 1024)
 
-	meta, err := Read(small, ReadOptions{})
+	meta, err := Read(small)
 	if err != nil {
 		t.Fatalf("Read 失败: %v", err)
-	}
-	if meta.TooLarge || meta.Truncated {
-		t.Error("小文件不应标记 TooLarge/Truncated")
 	}
 	if int64(len(meta.Content)) != 1024 {
 		t.Errorf("小文件应返回完整内容，实际 %d 字节", len(meta.Content))

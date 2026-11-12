@@ -37,3 +37,10 @@ Thumbs.db
 # 根目录意外图标副本（应用实际使用 ui/images/icon_*.png）
 /ICON.png
 /ICON_256.png
+
+# 大文件性能测试集生成物（约 31MB，用 preview-test/large/generate.ps1 随时重建；
+# 生成器本身入库，生成物不入库）
+/preview-test/large/*.md
+/preview-test/large/*.txt
+/preview-test/large/*.log
+/preview-test/large/*.html

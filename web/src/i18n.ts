@@ -19,12 +19,7 @@ const dict = {
   saving: { zh: '保存中…', en: 'Saving…' },
   loading: { zh: '加载中…', en: 'Loading…' },
   opened: { zh: '已打开', en: 'Opened' },
-  readOnlyPreview: { zh: '只读预览', en: 'read-only preview' },
   untitled: { zh: '无标题', en: 'Untitled' },
-  largeFileConfirm: {
-    zh: '体积较大，完整打开可能卡顿。是否以只读预览方式打开（仅加载前 256 KB）？',
-    en: 'is large; opening it fully may freeze the editor. Open as read-only preview (first 256 KB only)?',
-  },
   openFailed: { zh: '打开失败', en: 'Open failed' },
   saveFailed: { zh: '保存失败', en: 'Save failed' },
   error: { zh: '出错', en: 'Error' },
@@ -147,6 +142,7 @@ const dict = {
   togglePreview: { zh: '显示预览', en: 'Show Preview' },
   toggleEdit: { zh: '返回编辑', en: 'Back to Edit' },
   menuAutoPreview: { zh: '自动预览', en: 'Auto Preview' },
+  previewTooLarge: { zh: '内容过大，暂不支持预览', en: 'Content too large; preview is unavailable' },
   tabLimitReached: {
     zh: '标签数已达上限（{n}），请先关闭部分标签',
     en: 'Tab limit reached ({n}); close some tabs first',

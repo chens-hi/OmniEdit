@@ -25,10 +25,6 @@ export interface FileMeta {
   encoding?: string;
   /** 行尾风格："lf" | "crlf" | "mixed" | ""。 */
   lineEnding?: string;
-  /** 文件超过默认打开阈值，content 为空，需确认后以 allowLarge 重取。 */
-  tooLarge?: boolean;
-  /** content 已被截断，应作只读预览。 */
-  truncated?: boolean;
 }
 
 /** API 错误：附带 HTTP 状态码，供上层区分 403（未授权，可发起宿主授权）等。 */
@@ -52,10 +48,9 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-/** 读取文本文件内容。allowLarge=true 时超大文件返回截断的只读预览。 */
-export function readFile(path: string, allowLarge = false): Promise<{ file: FileMeta }> {
-  const flag = allowLarge ? '&allowLarge=1' : '';
-  return request(`${BASE}/api/file/read?path=${encodeURIComponent(path)}${flag}`);
+/** 读取文本文件内容。超过打开上限（10MB）后端直接返回 413 错误。 */
+export function readFile(path: string): Promise<{ file: FileMeta }> {
+  return request(`${BASE}/api/file/read?path=${encodeURIComponent(path)}`);
 }
 
 /**
