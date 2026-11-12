@@ -45,7 +45,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.97';
+const appVersion = '0.5.98';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -509,6 +509,32 @@ const editorCtxItems = computed(() => {
 /** 是否正在显示预览（预览态：整个编辑区被预览替换）。 */
 const previewShowing = computed(() => showPreview.value && !!store.activeTab?.previewKind);
 
+// ---- 预览区右键菜单：只有「复制」（预览只读，无剪切/粘贴/全选） ----
+// DOM 选区（window.getSelection）非响应式——右键那刻快照选中文本，
+// 菜单项 disabled 与复制动作都读快照，避免读到过期状态（同 editorCtx 教训）。
+const previewCtx = ref<{ x: number; y: number; selText: string } | null>(null);
+
+function onPreviewContextmenu(e: MouseEvent) {
+  e.preventDefault();
+  const sel = window.getSelection()?.toString() ?? '';
+  previewCtx.value = { x: e.clientX, y: e.clientY, selText: sel };
+}
+
+const previewCtxItems = computed(() => {
+  const hasSel = !!previewCtx.value?.selText;
+  return [
+    {
+      label: t('ctxCopy'),
+      shortcut: 'Ctrl+C',
+      disabled: !hasSel,
+      action: () => {
+        const s = previewCtx.value?.selText;
+        if (s) void navigator.clipboard.writeText(s).catch(() => {});
+      },
+    },
+  ];
+});
+
 // ---- 预览/编辑悬浮按钮：可拖拽，点按切换，拖拽后吸附左右边缘，位置持久化 ----
 const TOGGLE_POS_KEY = 'omniedit.previewTogglePos';
 const TOGGLE_SIZE = 52;        // 按钮边长（px，与 CSS 一致）
@@ -673,7 +699,8 @@ onMounted(async () => {
             </div>
           </div>
           <!-- 预览态：填满整个编辑区（editor-pane 已 v-show 隐藏）；无标题栏，眼/笔按钮切回编辑 -->
-          <div v-if="showPreview && store.activeTab?.previewKind" class="preview-full">
+          <!-- 预览页右键：只有「复制」（复制选中文本），无剪切/粘贴（预览不可编辑） -->
+          <div v-if="showPreview && store.activeTab?.previewKind" class="preview-full" @contextmenu="onPreviewContextmenu">
             <PreviewPanel
               :tab-id="store.activeTab.id"
               :kind="store.activeTab.previewKind"
@@ -762,6 +789,15 @@ onMounted(async () => {
       :y="editorCtx.y"
       :items="editorCtxItems"
       @close="editorCtx = null"
+    />
+
+    <!-- 预览区右键菜单（只有复制） -->
+    <ContextMenu
+      v-if="previewCtx"
+      :x="previewCtx.x"
+      :y="previewCtx.y"
+      :items="previewCtxItems"
+      @close="previewCtx = null"
     />
 
     <AppModal v-if="showAbout" :title="'OmniEdit'" :width="360" @close="showAbout = false">

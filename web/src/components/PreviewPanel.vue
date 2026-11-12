@@ -3,6 +3,10 @@ import { computed, ref, watch, onBeforeUnmount } from 'vue';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { APP_BASE } from '../api';
+import { useEditorStore } from '../store';
+import { t } from '../i18n';
+
+const store = useEditorStore();
 
 /**
  * 统一预览面板（多后缀共用渲染模板），桌面/移动同一渲染管线：
@@ -78,8 +82,11 @@ function rawUrl(absPath: string): string {
   return `${APP_BASE}/api/file/raw?path=${encodeURIComponent(absPath)}`;
 }
 /**
- * 净化后遍历 DOM，把资源类相对路径重写为 /api/file/raw 绝对 URL。
- * a[href] 指向文件时同样重写并强制新窗口（避免预览点击劫持主页面导航）。
+ * 净化后遍历 DOM：
+ *   - 资源类相对路径重写为 /api/file/raw 绝对 URL。
+ *   - <a> 把原始 href 存到 data-href（点击复制用）；本地文件链接重写为 raw
+ *     接口。渲染后点击统一拦截（见 onPreviewClick），不再依赖 target=_blank
+ *     （嵌入式 webview 会忽略并就地导航冲掉 SPA）。
  */
 function rewriteResUrls(sanitized: string): string {
   const tpl = document.createElement('template');
@@ -95,14 +102,33 @@ function rewriteResUrls(sanitized: string): string {
   }
   tpl.content.querySelectorAll('a[href]').forEach((a) => {
     const raw = a.getAttribute('href');
-    if (!raw || !isRewritableUrl(raw)) return;
-    const abs = toFsAbs(raw);
-    if (!abs) return;
-    a.setAttribute('href', rawUrl(abs));
-    a.setAttribute('target', '_blank');
-    a.setAttribute('rel', 'noopener');
+    if (!raw) return;
+    // 原始链接快照：点击复制给用户的值（md 里的相对路径/原始 URL，非内部 API 地址）。
+    a.setAttribute('data-href', raw);
+    // 本地文件链接（相对/绝对路径）→ 重写为 raw 接口；外链/data/锚点保留原 href。
+    if (isRewritableUrl(raw)) {
+      const abs = toFsAbs(raw);
+      if (abs) a.setAttribute('href', rawUrl(abs));
+    }
   });
   return tpl.innerHTML;
+}
+
+/**
+ * 预览内链接点击拦截（MD/HTML 统一，事件委托——内容是 v-html 动态渲染的）：
+ *   - 页内锚点（#xxx）放行（浏览器仅滚动定位，不会导航）。
+ *   - 其余链接一律 preventDefault（防 webview 就地导航冲掉 SPA），
+ *     复制原始链接（data-href）并 toast 提示。
+ */
+function onPreviewClick(e: MouseEvent) {
+  const a = (e.target as HTMLElement).closest('a[href]');
+  if (!a) return;
+  const href = a.getAttribute('href') ?? '';
+  if (href.startsWith('#')) return;
+  e.preventDefault();
+  const raw = a.getAttribute('data-href') || href;
+  void navigator.clipboard.writeText(raw).catch(() => {});
+  store.toast(t('linkCopied'), 'success');
 }
 
 // 渲染输出：markdown 解析后净化；html 直接净化；随后重写相对资源。
@@ -116,7 +142,7 @@ const rendered = computed(() => {
 </script>
 
 <template>
-  <div class="pv-doc" :class="kind === 'markdown' ? 'pv-md' : 'pv-html'" v-html="rendered" />
+  <div class="pv-doc" :class="kind === 'markdown' ? 'pv-md' : 'pv-html'" v-html="rendered" @click="onPreviewClick" />
 </template>
 
 <style scoped>

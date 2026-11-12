@@ -142,6 +142,7 @@ const dict = {
   ctxCut: { zh: '剪切', en: 'Cut' },
   ctxPaste: { zh: '粘贴', en: 'Paste' },
   ctxSelectAll: { zh: '全选', en: 'Select All' },
+  linkCopied: { zh: '链接已复制', en: 'Link copied' },
   // 预览
   togglePreview: { zh: '显示预览', en: 'Show Preview' },
   toggleEdit: { zh: '返回编辑', en: 'Back to Edit' },
