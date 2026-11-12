@@ -7,14 +7,15 @@ import { theme } from '../theme';
 /**
  * 统一预览面板（多后缀共用渲染模板）：
  *   - markdown：marked 解析 + DOMPurify 净化（md/markdown 共用）。
- *   - html：iframe sandbox srcdoc 渲染（htm/html 共用；sandbox 不含 allow-scripts，默认禁脚本）。
+ *   - html：iframe 用 blob URL 作为 src 渲染（htm/html 共用）。桌面/移动统一，
+ *     比 srcdoc 兼容性好（移动 webview 对 srcdoc+sandbox 支持差会空白）。
  *
  * 性能：
  *   - 预览独立防抖 250ms（debounced ref），编辑器 CodeMirror 同步即时不防抖，
  *     预览停止输入 250ms 后才重渲染，避免逐键 parse+净化卡顿。
- *   - html 用 srcdoc 全量替换，防抖降低替换频率；主题切换低频开销可忽略。
+ *   - html 内容/主题变化时重建 blob URL 并 revoke 旧的，防抖降低频率、避免内存泄漏。
  *
- * 主题：md 走 CSS 变量天然适配；html iframe 注入跟随主题的基础样式（theme ref 驱动）。
+ * 主题：md 走 CSS 变量天然适配；html blob 文档内注入跟随主题的基础样式（theme ref 驱动）。
  */
 const props = defineProps<{ kind: 'markdown' | 'html'; content: string }>();
 
@@ -25,7 +26,10 @@ watch(() => props.content, (v) => {
   window.clearTimeout(timer);
   timer = window.setTimeout(() => { debounced.value = v; }, 250);
 });
-onBeforeUnmount(() => window.clearTimeout(timer));
+onBeforeUnmount(() => {
+  window.clearTimeout(timer);
+  if (blobUrl.value) URL.revokeObjectURL(blobUrl.value);
+});
 
 // markdown：解析 + 净化（防脚本注入）。
 const mdHtml = computed(() => {
@@ -33,7 +37,7 @@ const mdHtml = computed(() => {
   return DOMPurify.sanitize(raw as string);
 });
 
-// html：包成完整文档 + 注入跟随主题的基础样式，给 iframe srcdoc。
+// html：包成完整文档 + 注入跟随主题的基础样式。
 const htmlDoc = computed(() => {
   const light = theme.value === 'light';
   const bg = light ? '#ffffff' : '#1e1e1e';
@@ -44,11 +48,31 @@ const htmlDoc = computed(() => {
     + `a{color:${link}}</style>`;
   return `<!DOCTYPE html><html><head><meta charset="utf-8">${base}</head><body>${debounced.value ?? ''}</body></html>`;
 });
+
+// html 预览用 blob URL 作为 iframe src（比 srcdoc 兼容性好，移动 webview 也能渲染）。
+// 内容/主题变化时重建 blob URL 并 revoke 旧的，避免内存泄漏。
+const blobUrl = ref<string>('');
+let lastBlobUrl: string | null = null;
+watch(
+  [htmlDoc, () => props.kind],
+  ([doc, kind]) => {
+    if (kind !== 'html') return;
+    if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
+    const blob = new Blob([doc], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    blobUrl.value = url;
+    lastBlobUrl = url;
+  },
+  { immediate: true },
+);
+onBeforeUnmount(() => {
+  if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
+});
 </script>
 
 <template>
   <div v-if="kind === 'markdown'" class="pv-md" v-html="mdHtml" />
-  <iframe v-else class="pv-html" sandbox="allow-same-origin" :srcdoc="htmlDoc" title="preview" />
+  <iframe v-else class="pv-html" :src="blobUrl" title="preview" />
 </template>
 
 <style scoped>
