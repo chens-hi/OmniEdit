@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.5.96
+version=0.5.97
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.5.96: HTML 预览弃用 iframe 改内联 DOMPurify 渲染（与 MD 同一管线），根治移动 webview 空白
+changelog=0.5.97: 预览支持相对路径图片——新增 /api/file/raw 接口，MD/HTML 内相对资源重写到 raw 接口显示

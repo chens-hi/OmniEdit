@@ -2,6 +2,7 @@
 import { computed, ref, watch, onBeforeUnmount } from 'vue';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { APP_BASE } from '../api';
 
 /**
  * 统一预览面板（多后缀共用渲染模板），桌面/移动同一渲染管线：
@@ -9,13 +10,19 @@ import DOMPurify from 'dompurify';
  *   - html：DOMPurify 直接净化后内联渲染（htm/html 共用）。
  *     弃用 iframe：移动 webview 对 srcdoc / blob URL 均渲染空白；内联路径与
  *     markdown 同源，实测在移动 webview 正常。
- *     已知取舍：html 内 <style> 被 DOMPurify 保留并生效；但作用于
- *     html/body 的选择器不生效（内容注入 div）；<script> 一律净化剥离；
- *     相对路径资源（图片等）无法解析——与之前 iframe 行为一致。
+ *
+ * 相对资源：内容里的相对/绝对路径资源（图片等）重写到后端 /api/file/raw
+ *   （按 baseDir 解析成文件系统绝对路径后原样输出字节），内联渲染下也能显示。
  *
  * 性能：同页签编辑防抖 250ms；切页签立即同步新内容（无残留闪烁）。
  */
-const props = defineProps<{ tabId: number; kind: 'markdown' | 'html'; content: string }>();
+const props = defineProps<{
+  tabId: number;
+  kind: 'markdown' | 'html';
+  content: string;
+  /** 当前文件所在目录（文件系统绝对路径），相对资源解析基准。空 = 草稿不重写。 */
+  baseDir: string;
+}>();
 
 // 预览内容（防抖）：同页签编辑 → 停止输入 250ms 后更新；切页签 → 立即同步。
 const debounced = ref(props.content);
@@ -31,14 +38,80 @@ watch(() => props.tabId, () => {
 });
 onBeforeUnmount(() => window.clearTimeout(timer));
 
-// 渲染输出：markdown 解析后净化；html 直接净化。
+// ---- 相对资源重写到 /api/file/raw ----
+/** 合并并规范化文件系统路径（解析 ./ 与 ../；后端拒 ".." 段，必须前端先折叠）。 */
+function resolveFsPath(baseDir: string, rel: string): string | null {
+  // 折叠反斜杠 → 正斜杠统一处理
+  const norm = (p: string) => p.replace(/\\/g, '/');
+  const segments = norm(baseDir).split('/');
+  for (const seg of norm(rel).split('/')) {
+    if (seg === '' || seg === '.') continue;
+    if (seg === '..') { if (segments.length > 1) segments.pop(); continue; }
+    segments.push(seg);
+  }
+  const joined = segments.join('/');
+  return joined.startsWith('/') ? joined : null;
+}
+/** 是否需要重写的 URL（协议/data/blob/锚点/查询式绝对 URL 等保留原样）。 */
+function isRewritableUrl(url: string): boolean {
+  if (!url) return false;
+  if (/^(https?:)?\/\//i.test(url)) return false;   // http(s) 或协议相对
+  if (/^(data|blob|javascript|mailto|tel|about):/i.test(url)) return false;
+  if (url.startsWith('#')) return false;            // 页内锚点
+  return true;                                      // 相对或文件系统绝对路径
+}
+/** 是否文件系统绝对路径：Unix 根或 Windows 盘符（D:/ 或 D:\ 前缀）。 */
+function isFsAbsolute(url: string): boolean {
+  return url.startsWith('/') || /^[A-Za-z]:[\\/]/.test(url);
+}
+/** 把单条 URL 解析成文件系统绝对路径；解析失败返回 null（保留原样）。 */
+function toFsAbs(raw: string): string | null {
+  if (isFsAbsolute(raw)) return raw;                // 已是绝对路径原样用
+  return props.baseDir ? resolveFsPath(props.baseDir, raw) : null;
+}
+/** 资源属性映射：选择器 → 属性（video 的 src/poster 分别命中两条规则）。 */
+const RES_ATTRS: [string, string][] = [
+  ['img[src]', 'src'], ['video[src]', 'src'], ['video[poster]', 'poster'], ['audio[src]', 'src'],
+  ['source[src]', 'src'], ['track[src]', 'src'], ['embed[src]', 'src'], ['object[data]', 'data'],
+];
+function rawUrl(absPath: string): string {
+  return `${APP_BASE}/api/file/raw?path=${encodeURIComponent(absPath)}`;
+}
+/**
+ * 净化后遍历 DOM，把资源类相对路径重写为 /api/file/raw 绝对 URL。
+ * a[href] 指向文件时同样重写并强制新窗口（避免预览点击劫持主页面导航）。
+ */
+function rewriteResUrls(sanitized: string): string {
+  const tpl = document.createElement('template');
+  tpl.innerHTML = sanitized;
+  for (const [selector, attr] of RES_ATTRS) {
+    tpl.content.querySelectorAll(selector).forEach((el) => {
+      const raw = el.getAttribute(attr);
+      if (!raw || !isRewritableUrl(raw)) return;
+      const abs = toFsAbs(raw);
+      if (!abs) return;
+      el.setAttribute(attr, rawUrl(abs));
+    });
+  }
+  tpl.content.querySelectorAll('a[href]').forEach((a) => {
+    const raw = a.getAttribute('href');
+    if (!raw || !isRewritableUrl(raw)) return;
+    const abs = toFsAbs(raw);
+    if (!abs) return;
+    a.setAttribute('href', rawUrl(abs));
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener');
+  });
+  return tpl.innerHTML;
+}
+
+// 渲染输出：markdown 解析后净化；html 直接净化；随后重写相对资源。
 const rendered = computed(() => {
   const src = debounced.value ?? '';
-  if (props.kind === 'markdown') {
-    const raw = marked.parse(src, { async: false, gfm: true, breaks: true });
-    return DOMPurify.sanitize(raw as string);
-  }
-  return DOMPurify.sanitize(src);
+  const html = props.kind === 'markdown'
+    ? DOMPurify.sanitize(marked.parse(src, { async: false, gfm: true, breaks: true }) as string)
+    : DOMPurify.sanitize(src);
+  return rewriteResUrls(html);
 });
 </script>
 

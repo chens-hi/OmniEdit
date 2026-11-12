@@ -45,7 +45,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.96';
+const appVersion = '0.5.97';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -678,6 +678,7 @@ onMounted(async () => {
               :tab-id="store.activeTab.id"
               :kind="store.activeTab.previewKind"
               :content="store.activeTab.content"
+              :base-dir="store.activeTab.path.replace(/[\\/][^\\/]*$/, '')"
             />
           </div>
           <!-- 眼睛/铅笔：预览/编辑切换（仅可预览类型 md/htm/html 显示），悬浮可拖拽、吸附左右边缘、位置持久化 -->

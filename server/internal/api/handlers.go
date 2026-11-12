@@ -5,6 +5,7 @@
 //	GET  /api/health          健康检查
 //	GET  /api/ws              WebSocket：文件变更推送（事件路由用）
 //	GET  /api/file/read       读取文本文件（?path=...）
+//	GET  /api/file/raw        二进制原样输出（?path=...，HTML/MD 预览的相对资源用）
 //	POST /api/file/write      保存文本文件（不存在则创建，支持另存为）
 //	POST /api/file/unwatch    关闭标签时释放文件监控
 //
@@ -130,6 +131,31 @@ func (h *Handler) ReadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "file": meta})
+}
+
+// RawFile GET /api/file/raw?path=... —— 原样流式输出文件字节（按扩展名给
+// Content-Type），供 HTML/Markdown 预览中相对路径资源（图片/样式等）解析。
+// 权限模型与 /api/file/read 完全一致：网关身份 + 穿越校验 + devRootGuard；
+// 与文本读取相比不新增能力（read 本就能把任意文件字节装进 JSON 返回），
+// 仅输出形态为二进制流。ServeFile 自带 Range/HEAD 支持，大文件不占内存。
+func (h *Handler) RawFile(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requireGatewayUser(r); !ok {
+		errJSON(w, http.StatusUnauthorized, "未授权：缺少网关用户身份")
+		return
+	}
+	rawPath := r.URL.Query().Get("path")
+	absPath, err := files.CleanAndValidate(rawPath)
+	if err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.devRootGuard(absPath); err != nil {
+		errJSON(w, http.StatusForbidden, err.Error())
+		return
+	}
+	// 预览资源允许短缓存（同一路径内容变更频率低；冲突检测不走这里）。
+	w.Header().Set("Cache-Control", "private, max-age=60")
+	http.ServeFile(w, r, absPath)
 }
 
 // WriteFile POST /api/file/write

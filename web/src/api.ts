@@ -8,6 +8,8 @@ import { TrimApp } from '@trimjs/web-app';
  * 开发环境由 Vite proxy 转发到本地 Go 服务。
  */
 const BASE = '/app/omniedit';
+/** 应用网关前缀（预览资源重写等处复用）。 */
+export const APP_BASE = BASE;
 
 /** fnOS 官方 JS SDK 实例（授权、目录选择、主题/语言跟随宿主）。 */
 export const sdk = new TrimApp();
