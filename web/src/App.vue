@@ -45,7 +45,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.5.91';
+const appVersion = '0.5.92';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -511,17 +511,20 @@ const previewShowing = computed(() => showPreview.value && !!store.activeTab?.pr
 
 // ---- 预览/编辑悬浮按钮：可拖拽，点按切换，拖拽后吸附左右边缘，位置持久化 ----
 const TOGGLE_POS_KEY = 'omniedit.previewTogglePos';
-const TOGGLE_SIZE = 44;        // 按钮边长（px，与 CSS 一致）
+const TOGGLE_SIZE = 52;        // 按钮边长（px，与 CSS 一致）
 const TOGGLE_MARGIN = 10;      // 吸附到边缘时的留白
 const TOGGLE_DRAG_THRESHOLD = 6; // 区分点按/拖拽的移动阈值
 
 const toggleBtn = ref<HTMLElement | null>(null);
 // 按钮相对 editor-area 左上的位置；null = 默认右上角（CSS top/right）。
 const togglePos = ref<{ x: number; y: number } | null>(null);
-// 拖拽状态：target=指针目标点，raf=跟随动画句柄，moved=是否已判定为拖拽。
+// 拖拽状态：grabDX/Y=指针相对按钮左上的偏移（拖拽时按钮位置=指针-偏移，点按不跳）；
+// parentLeft/Y=editor-area 在视口的位置；moved=是否已判定为拖拽。
 let toggleDrag: {
-  pointerId: number; targetX: number; targetY: number;
-  raf: number; moved: boolean;
+  pointerId: number; grabDX: number; grabDY: number;
+  parentLeft: number; parentTop: number;
+  startClientX: number; startClientY: number;
+  moved: boolean;
 } | null = null;
 
 function loadTogglePos() {
@@ -559,27 +562,12 @@ function snapToggleToEdge() {
   togglePos.value = clampToggle(x, cur.y);
   saveTogglePos();
 }
-/** 停止跟随动画并解绑临时监听。 */
+/** 停止拖拽并解绑临时监听。 */
 function endToggleDrag() {
-  if (toggleDrag) {
-    cancelAnimationFrame(toggleDrag.raf);
-    window.removeEventListener('pointermove', onTogglePointerMove);
-    window.removeEventListener('pointerup', onTogglePointerUp);
-    window.removeEventListener('pointercancel', onTogglePointerCancel);
-  }
+  window.removeEventListener('pointermove', onTogglePointerMove);
+  window.removeEventListener('pointerup', onTogglePointerUp);
+  window.removeEventListener('pointercancel', onTogglePointerCancel);
   toggleDrag = null;
-}
-/** 跟随动画：每帧向指针目标缓动（快速拖也平滑追上，不掉队）。 */
-function toggleFollow() {
-  if (!toggleDrag) return;
-  const cur = togglePos.value;
-  if (cur) {
-    // 缓动系数 0.5：既紧跟（快拖不掉队）又有轻微跟随感。
-    const nx = cur.x + (toggleDrag.targetX - cur.x) * 0.5;
-    const ny = cur.y + (toggleDrag.targetY - cur.y) * 0.5;
-    togglePos.value = clampToggle(nx, ny);
-  }
-  toggleDrag.raf = requestAnimationFrame(toggleFollow);
 }
 function onTogglePointerDown(e: PointerEvent) {
   const btn = e.currentTarget as HTMLElement;
@@ -592,9 +580,13 @@ function onTogglePointerDown(e: PointerEvent) {
   togglePos.value = start;
   toggleDrag = {
     pointerId: e.pointerId,
-    targetX: e.clientX - parentRect.left - TOGGLE_SIZE / 2,
-    targetY: e.clientY - parentRect.top - TOGGLE_SIZE / 2,
-    raf: requestAnimationFrame(toggleFollow),
+    // 指针相对按钮左上角的偏移：拖拽时按钮位置 = 指针 - 偏移，保证点按不跳。
+    grabDX: e.clientX - rect.left,
+    grabDY: e.clientY - rect.top,
+    parentLeft: parentRect.left,
+    parentTop: parentRect.top,
+    startClientX: e.clientX,
+    startClientY: e.clientY,
     moved: false,
   };
   window.addEventListener('pointermove', onTogglePointerMove);
@@ -603,15 +595,20 @@ function onTogglePointerDown(e: PointerEvent) {
 }
 function onTogglePointerMove(e: PointerEvent) {
   if (!toggleDrag || e.pointerId !== toggleDrag.pointerId) return;
-  const parent = toggleBtn.value?.offsetParent as HTMLElement;
-  const parentRect = parent.getBoundingClientRect();
-  toggleDrag.targetX = e.clientX - parentRect.left - TOGGLE_SIZE / 2;
-  toggleDrag.targetY = e.clientY - parentRect.top - TOGGLE_SIZE / 2;
-  // 超过阈值判定为拖拽（此前视为点按，不更新位置以免微动就跳）。
+  // 超过阈值判定为拖拽（按客户端坐标，此前视为点按不更新位置以免微动就跳）。
   if (!toggleDrag.moved) {
-    const cur = togglePos.value;
-    if (cur && Math.hypot(toggleDrag.targetX - cur.x, toggleDrag.targetY - cur.y) < TOGGLE_DRAG_THRESHOLD) return;
+    if (Math.hypot(e.clientX - toggleDrag.startClientX, e.clientY - toggleDrag.startClientY) < TOGGLE_DRAG_THRESHOLD) return;
     toggleDrag.moved = true;
+  }
+  // 按钮位置 = 指针 - 抓取偏移（保持抓取点相对按钮不动，不跳）。
+  const targetX = e.clientX - toggleDrag.parentLeft - toggleDrag.grabDX;
+  const targetY = e.clientY - toggleDrag.parentTop - toggleDrag.grabDY;
+  const cur = togglePos.value;
+  // 缓动跟随：向目标靠近（快速拖也平滑追上）。
+  if (cur) {
+    const nx = cur.x + (targetX - cur.x) * 0.6;
+    const ny = cur.y + (targetY - cur.y) * 0.6;
+    togglePos.value = clampToggle(nx, ny);
   }
 }
 function onTogglePointerUp(e: PointerEvent) {
