@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.6.26
+version=0.6.27
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.6.26: 新增 .bat/.cmd/.reg/.wxs/.wxi/.tex/.latex 语法高亮支持
+changelog=0.6.27: 新增 .editorconfig/.gitconfig/.npmrc/.yarnrc/.service/.timer/.socket/.desktop/.json5/.webmanifest 语法高亮

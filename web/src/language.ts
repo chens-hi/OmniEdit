@@ -113,6 +113,8 @@ export function languageExtensionFor(filename: string): Extension[] {
     // 数据 / 配置
     case 'json':
     case 'jsonc':
+    case 'json5':
+    case 'webmanifest':
       return [LANG_JSON];
     case 'yml':
     case 'yaml':
@@ -223,6 +225,14 @@ export function languageExtensionFor(filename: string): Extension[] {
     case 'cfg':
     case 'properties':
     case 'env':
+    case 'editorconfig':
+    case 'gitconfig':
+    case 'npmrc':
+    case 'yarnrc':
+    case 'service':
+    case 'timer':
+    case 'socket':
+    case 'desktop':
       return [LANG_PROPERTIES];
     case 'conf':
     case 'nginx':
