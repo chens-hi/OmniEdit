@@ -211,6 +211,14 @@ watch(
   background: var(--bg);
   line-height: 1.6;
   font-size: 14px;
+  /**
+   * 滚动条是叠加式（不占布局宽度），会压在右侧 padding 上——
+   * 实测 scrollHeight > clientHeight 时 offsetWidth === clientWidth，
+   * 于是左留白 20px、右留白实际只剩约 10px，看起来不对称。
+   * both-edges：左右都预留滚动条槽位，无论有无滚动条两侧始终等宽。
+   * （stable 只预留右侧，仍需手补左边，故用 both-edges。）
+   */
+  scrollbar-gutter: stable both-edges;
 }
 /* markdown 预览排版（走 CSS 变量，天然适配主题） */
 .pv-md :deep(h1),
