@@ -678,6 +678,14 @@ export const useEditorStore = defineStore('editor', () => {
    * 返回 'saved'（保存后关闭）/ 'closed'（未涉及保存直接关）/ 'cancel'（用户取消）。
    */
   function requestCloseMany(ids: number[]): Promise<'saved' | 'closed' | 'cancel'> {
+    // 跳过正在保存中的页签：writeFile 在途，此时关闭会丢失写入结果或产生竞态。
+    const skippedSaving = ids.filter(id => tabById(id)?.saving);
+    ids = ids.filter(id => !tabById(id)?.saving);
+    if (skippedSaving.length) {
+      toast(t('saveInProgressSkip'), 'info');
+    }
+    if (!ids.length) return Promise.resolve('cancel');
+
     const toSave: { id: number; name: string }[] = [];
     const toDiscard: { id: number; name: string }[] = [];
     for (const id of ids) {

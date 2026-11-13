@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.6.23
+version=0.6.24
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.6.23: 保存时页签显示转圈+竖条脉冲指示（大文件保存不再无反馈）；修复保存期间继续输入后黄点错误消失的问题
+changelog=0.6.24: 保存中转圈替换关闭按钮（保存期间不可关闭页签）；批量关闭跳过正在保存的页签并提示

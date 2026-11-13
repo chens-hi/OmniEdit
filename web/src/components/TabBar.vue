@@ -456,11 +456,20 @@ watch(() => [store.activeId, store.tabs.length], async () => {
             :title="tabStatus(tab).title"
           />
           <span class="tab-name">{{ tab.name }}</span>
-          <!-- 加载中：名字旁转圈（内容未就绪），优先级高于状态竖条 -->
+          <!-- 加载中：名字旁转圈（内容未就绪） -->
           <span v-if="tab.loading" class="tab-loading" :title="t('loading')" />
-          <!-- 保存中：名字右侧显示小转圈，提示写入进行中 -->
-          <span v-else-if="tab.saving" class="tab-saving" :title="t('saving')" />
-          <span class="tab-close" :title="t('close')" @click.stop="store.closeTab(tab.id)">×</span>
+          <!-- 关闭号 / 保存中转圈：同一位置，保存时替换关闭号且不可关闭 -->
+          <span
+            v-if="tab.saving"
+            class="tab-saving"
+            :title="t('saving')"
+          />
+          <span
+            v-else
+            class="tab-close"
+            :title="t('close')"
+            @click.stop="store.closeTab(tab.id)"
+          >×</span>
         </div>
       </div>
       <!-- 边缘渐变：覆盖在滚动内容之上（不随内容滚动，纯合成层），pointer-events 穿透 -->

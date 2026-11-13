@@ -14,6 +14,7 @@ const dict = {
   saveShortcut: { zh: '保存 (Ctrl+S)', en: 'Save (Ctrl+S)' },
   newFile: { zh: '新建', en: 'New' },
   saving: { zh: '保存中…', en: 'Saving…' },
+  saveInProgressSkip: { zh: '正在保存的文件已跳过', en: 'File being saved was skipped' },
   loading: { zh: '加载中…', en: 'Loading…' },
   untitled: { zh: '无标题', en: 'Untitled' },
   openFailed: { zh: '打开失败', en: 'Open failed' },
