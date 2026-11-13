@@ -26,6 +26,10 @@ const dict = {
     zh: '不支持编辑 .{ext} 文件（二进制/容器格式）',
     en: '.{ext} files are binary and cannot be edited',
   },
+  binaryNotSupportedReason: {
+    zh: '文件是二进制内容，无法作为文本编辑（{reason}）',
+    en: 'This file appears to be binary ({reason}) and cannot be edited as text',
+  },
   saveFailed: { zh: '保存失败', en: 'Save failed' },
   // 打开失败的分类文案：一句话说清结论 + 数据，不用嵌套冒号。
   openTooLarge: {

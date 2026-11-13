@@ -98,14 +98,97 @@ const LANG_SCALA = StreamLanguage.define(clikeScala);
 const LANG_DART = StreamLanguage.define(clikeDart);
 
 /**
+ * 点开头的特殊配置文件名 → 语言扩展。
+ *
+ * 这些文件不能用「最后一个点之后」当扩展名：
+ *   .env / .env.local / .env.production  → 会得到 local / production
+ *   .editorconfig / .gitignore / .npmrc  → 会得到 editorconfig / gitignore / npmrc
+ *     （这几个恰好能命中，但 .env.local 这种带环境后缀的一定失败）
+ *
+ * 匹配规则：完整文件名，或「文件名以该前缀 + 点」开头（覆盖 .env.* 家族）。
+ */
+const DOTFILE_LANGS: [string, Extension][] = [
+  ['.env', LANG_PROPERTIES],
+  ['.editorconfig', LANG_PROPERTIES],
+  ['.gitconfig', LANG_PROPERTIES],
+  ['.gitmodules', LANG_PROPERTIES],
+  ['.npmrc', LANG_PROPERTIES],
+  ['.yarnrc', LANG_PROPERTIES],
+  ['.prettierrc', LANG_JSON],
+  ['.eslintrc', LANG_JSON],
+  ['.babelrc', LANG_JSON],
+  ['.dockerignore', LANG_SHELL],   // 语法接近 .gitignore，用 shell 注释高亮
+  ['.gitignore', LANG_SHELL],
+];
+
+/**
+ * 根据完整文件名（小写）匹配点开头的特殊配置。
+ * 支持 `.env.local` 这类「前缀 + 点 + 后缀」形式。
+ */
+function dotfileLanguage(base: string): Extension | null {
+  for (const [name, ext] of DOTFILE_LANGS) {
+    if (base === name || base.startsWith(name + '.')) return ext;
+  }
+  return null;
+}
+
+/**
+ * Shebang 解释器 → 语言扩展映射。
+ * 用于无扩展名（或扩展名未知）的脚本文件：读首行 `#!/usr/bin/env python3`
+ * 即可判定语言。NAS 上大量可执行脚本没有后缀，靠这个才能正常高亮。
+ *
+ * 匹配策略：把 shebang 行转小写，依次尝试这些关键字（顺序有意义——
+ * `python` 要能同时命中 python2/python3，`sh` 不能误吞 `powershell`）。
+ */
+const SHEBANG_MATCHERS: [RegExp, Extension][] = [
+  [/\bpython[0-9.]*\b/, LANG_PYTHON],
+  [/\bnode(js)?\b/, LANG_JS],
+  [/\bdeno\b/, LANG_TS],
+  [/\bts-node\b/, LANG_TS],
+  [/\bruby\b/, LANG_RUBY],
+  [/\bperl\b/, LANG_PERL],
+  [/\blua\b/, LANG_LUA],
+  [/\bphp\b/, LANG_PHP],
+  [/\bpwsh\b|\bpowershell\b/, LANG_POWERSHELL],
+  [/\btclsh\b|\bwish\b/, LANG_TCL],
+  [/\b(r|Rscript)\b/, LANG_R],
+  [/\bjulia\b/, LANG_JULIA],
+  // shell 放最后：sh/bash/zsh/dash/ksh 等，避免误吞上面的 powershell 等
+  [/\b(ba|z|da|k)?sh\b/, LANG_SHELL],
+];
+
+/**
+ * 从文件内容首行解析 shebang，返回对应语言扩展。
+ * 不是 shebang 或无匹配时返回 null（调用方回落纯文本）。
+ */
+export function languageFromShebang(content: string): Extension | null {
+  // 只看首行，且必须是 #! 开头；空内容直接返回
+  if (!content.startsWith('#!')) return null;
+  const nl = content.indexOf('\n');
+  const firstLine = (nl >= 0 ? content.slice(0, nl) : content.slice(0, 200)).toLowerCase();
+  for (const [re, ext] of SHEBANG_MATCHERS) {
+    if (re.test(firstLine)) return ext;
+  }
+  return null;
+}
+
+/**
  * 根据文件扩展名返回对应的 CodeMirror 语言扩展（查表复用单例）。
  * 未匹配的类型回落纯文本（返回空数组），由编辑器外壳主题保证深浅观感。
+ *
+ * 注意：这里只决定**语法高亮**，不决定能否打开文件——
+ * 打开与否由后端按内容判定（二进制检测 + 编码识别），因此无后缀文件
+ * 也能打开。无后缀/未知扩展名时的语言识别见 languageFromShebang。
  */
 export function languageExtensionFor(filename: string): Extension[] {
-  // 无扩展名的特殊文件名优先匹配（Dockerfile / Makefile 等）
   const base = filename.split(/[\\/]/).pop()?.toLowerCase() ?? '';
+  // 无扩展名的特殊文件名优先匹配（Dockerfile / CMakeLists 等）
   if (base === 'dockerfile') return [LANG_DOCKERFILE];
   if (base === 'cmakelists.txt') return [LANG_CMAKE];
+  // 点开头的配置文件名（.env / .env.local / .editorconfig …）：
+  // 必须在「按最后一个点取扩展名」之前判断，否则 .env.local 会被当成 .local。
+  const dotLang = dotfileLanguage(base);
+  if (dotLang) return [dotLang];
 
   const ext = filename.split('.').pop()?.toLowerCase() ?? '';
 

@@ -5,7 +5,6 @@ import { sdk } from './api';
 import { t } from './i18n';
 import { BUILTIN_FONTS, DEFAULT_FONT_ID, applyEditorFont } from './fonts';
 import { setThemeOverride, type ThemeMode } from './theme';
-import { SUPPORTED_EXTENSIONS, BINARY_EXTENSIONS } from './language';
 
 // ---- 编辑器设置（菜单栏驱动；后端 prefs 唯一持久化源，无 localStorage 兜底） ----
 
@@ -454,6 +453,14 @@ export const useEditorStore = defineStore('editor', () => {
   function reportOpenError(e: unknown) {
     const err = e as Error;
     const raw = err.message;
+    // 二进制内容：后端 ErrBinary 的文案形如
+    // 「文件是二进制内容，无法作为文本编辑（含 NUL 字节）: /path/x.bin」
+    if (raw.includes('二进制')) {
+      // 取出括号里的判定依据，拼成用户可读的一句话
+      const reason = raw.match(/（([^）]+)）/)?.[1];
+      setError(reason ? t('binaryNotSupportedReason', { reason }) : t('binaryNotSupported'));
+      return;
+    }
     if (raw.includes('UTF-8')) {
       setError(t('notUtf8'));
       return;
@@ -477,19 +484,10 @@ export const useEditorStore = defineStore('editor', () => {
    * 标签栏完全不受影响。
    */
   async function openFile(path: string) {
-    // 格式校验：分三种情况给出针对性提示，不进入后续流程。
-    //   1) 已知二进制格式 → 明确说明「不支持编辑此类文件」
-    //   2) 未知/不在支持列表 → 说明「不支持的文件格式」
-    //   3) 支持 → 继续（大文件由后端 Stat 后拒绝，见 reportOpenError）
-    const ext = path.split('.').pop()?.toLowerCase() ?? '';
-    if (BINARY_EXTENSIONS.has(ext)) {
-      toast(t('binaryNotSupported', { ext }), 'error', 5000);
-      return;
-    }
-    if (!SUPPORTED_EXTENSIONS.has(ext)) {
-      toast(t('unsupportedFormat', { ext: ext || '无扩展名' }), 'error', 5000);
-      return;
-    }
+    // 不再做扩展名白名单校验：打开能力由后端按**内容**判定
+    // （二进制检测 + UTF-8/GB18030 编码识别），无后缀文件也能正常打开。
+    // 二进制/超大/编码不可识别时，后端返回 415/413，由 reportOpenError
+    // 转成针对性提示。扩展名只影响语法高亮与文件管理器注册，不限制打开。
     const existing = tabs.value.find(tb => tb.path === path);
     if (existing) {
       activeId.value = existing.id;

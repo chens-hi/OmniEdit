@@ -228,17 +228,82 @@ func (e ErrNotUTF8) Error() string {
 	return "文件不是 UTF-8 编码（当前仅支持 UTF-8/ASCII，GBK 等编码将在后续版本支持）: " + e.Path
 }
 
+// ErrBinary 表示文件是二进制内容（含 NUL 字节或不可打印字节比例过高），
+// 拒绝按文本打开。与扩展名无关——无后缀文件也能正确识别，
+// 避免把图片/可执行文件当文本读出一堆乱码。
+type ErrBinary struct {
+	Path string
+	// Reason 具体判定依据，便于用户理解（如"含 NUL 字节"、"不可打印字符占比 42%"）。
+	Reason string
+}
+
+func (e ErrBinary) Error() string {
+	return "文件是二进制内容，无法作为文本编辑（" + e.Reason + "）: " + e.Path
+}
+
 // utf8BOM 是 UTF-8 字节序标记。
 var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
+// binaryProbeBytes 二进制检测的采样字节数。只看前 8KB——
+// 足够覆盖所有主流二进制格式的文件头，且对 10MB 文件也几乎零成本。
+const binaryProbeBytes = 8192
+
+// 二进制判定阈值：不可打印字符占比超过此值即判为二进制。
+// 纯文本（含中文 UTF-8/GBK）通常 < 1%；正常的控制字符只有 \t \n \r。
+const binaryControlRatio = 0.10
+
+// looksBinary 判断一段字节是否为二进制内容。
+//
+// 判定规则（任一成立即判二进制）：
+//  1. 含 NUL 字节（0x00）——文本文件不会有，是最强的二进制信号；
+//  2. 采样窗口内「不可打印字符」占比 > 10%。
+//     可打印 = tab / LF / CR / 以及 >= 0x20 的字节（注意：UTF-8 多字节
+//     序列的每个字节都 >= 0x80，因此中文不会误判）。
+//
+// 这套规则与扩展名完全无关，因此无后缀文件、错后缀文件都能正确识别。
+func looksBinary(data []byte) (bool, string) {
+	if len(data) == 0 {
+		return false, "" // 空文件按文本处理
+	}
+	probe := data
+	if len(probe) > binaryProbeBytes {
+		probe = probe[:binaryProbeBytes]
+	}
+	control := 0
+	for _, b := range probe {
+		switch {
+		case b == 0x00:
+			return true, "含 NUL 字节"
+		case b == 0x09 || b == 0x0A || b == 0x0D:
+			// tab / LF / CR：正常的文本控制字符
+		case b >= 0x20:
+			// 可打印 ASCII 或 UTF-8 多字节序列的一部分
+		default:
+			// 其余 C0 控制字符（0x01-0x08, 0x0B, 0x0C, 0x0E-0x1F）
+			control++
+		}
+	}
+	if ratio := float64(control) / float64(len(probe)); ratio > binaryControlRatio {
+		return true, fmt.Sprintf("不可打印字符占比 %.0f%%", ratio*100)
+	}
+	return false, ""
+}
+
 // decodeText 把文件字节解码为文本：
+//   - 先做二进制检测（与扩展名无关）：命中则返回 ErrBinary；
 //   - 识别并剥离 UTF-8 BOM（meta.Encoding = "utf-8-bom"）；
 //   - 严格校验 UTF-8 合法性（utf8.Valid）；
 //   - 非 UTF-8 时尝试 GB18030（Windows「ANSI」在简体中文环境的实际代码页，
 //     GBK 的超集；对纯 ASCII 文件等同 UTF-8，不会误判）——转成 UTF-8 返回并
 //     标记 meta.Encoding = "gb18030"，保存时由 Write 转回原编码写盘；
-//   - GB18030 也解不了（如 Big5/Shift-JIS/二进制）返回 ErrNotUTF8，绝不静默乱码。
+//   - GB18030 也解不了（如 Big5/Shift-JIS/其它二进制）返回 ErrNotUTF8，
+//     绝不静默乱码。
 func decodeText(data []byte, meta *ReadMeta) error {
+	// 二进制检测必须在编码判断之前：GB18030 几乎能解码任何字节流，
+	// 若先走编码分支，图片/可执行文件会被"成功"解码成乱码文本。
+	if isBin, reason := looksBinary(data); isBin {
+		return ErrBinary{Path: meta.Path, Reason: reason}
+	}
 	if len(data) >= 3 && string(data[:3]) == string(utf8BOM) {
 		meta.Encoding = "utf-8-bom"
 		data = data[3:]

@@ -20,7 +20,7 @@ import type { Command } from '@codemirror/view';
 // tabSize 是 EditorState 静态 facet
 const tabSizeFacet = EditorState.tabSize;
 import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
-import { languageExtensionFor, PREVIEW_MAX_BYTES } from './language';
+import { languageExtensionFor, languageFromShebang, PREVIEW_MAX_BYTES } from './language';
 import { useEditorStore } from './store';
 import { pathFromLocation } from './api';
 import { initTheme, theme } from './theme';
@@ -44,7 +44,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.6.47';
+const appVersion = '0.6.48';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -252,7 +252,14 @@ function mountEditor(tab: { id: number; content: string; path: string; name: str
       appKeymap,
       // 搜索浮窗：官方搜索状态机 + 自定义面板 UI（Mod-f/F3/Esc 官方 keymap 保留）
       search({ createPanel: createSearchPanel() }),
-      ...languageExtensionFor(tab.path || tab.name),
+      // 语言高亮：优先按扩展名；无扩展名/未知类型时按 shebang 识别
+      // （NAS 上很多可执行脚本没有后缀，靠 #! 判定 bash/python/perl 等）。
+      ...(() => {
+        const byExt = languageExtensionFor(tab.path || tab.name);
+        if (byExt.length) return byExt;
+        const byShebang = languageFromShebang(tab.content);
+        return byShebang ? [byShebang] : [];
+      })(),
       themeCompartment.of(cmThemeFor(theme.value)),
       editableCompartment.of(EditorView.editable.of(!tab.readonly)),
       indentCompartment.of(buildIndentExts()),
