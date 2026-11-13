@@ -164,9 +164,14 @@ func (h *Handler) WSHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	conn, err := ws.Upgrade(w, r)
 	if err != nil {
-		if err != ws.ErrNotWebsocket {
-			log.Printf("websocket 升级失败: %v", err)
+		if err == ws.ErrNotWebsocket {
+			// 非 WebSocket 请求：显式 400（gorilla 升级失败时自行写响应，
+			// 但「根本不是升级请求」在包内提前返回，必须在这里补响应）。
+			errJSON(w, http.StatusBadRequest, "需要 WebSocket 升级请求")
+			return
 		}
+		// 其它升级失败：gorilla 已写 HTTP 错误响应，只记日志。
+		log.Printf("websocket 升级失败: %v", err)
 		return
 	}
 	h.Hub.addConn(conn, user.UID)

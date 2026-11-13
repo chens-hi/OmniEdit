@@ -267,7 +267,8 @@ func (h *Handler) WriteFile(w http.ResponseWriter, r *http.Request) {
 // 性能：省去 Go json.Marshal 的字符串转义 + 前端 resp.json() 解析，
 // 10MB 文件的打开路径少两次 O(n) 编解码。
 func (h *Handler) ReadRaw(w http.ResponseWriter, r *http.Request) {
-	if _, ok := h.requireGatewayUser(r); !ok {
+	user, ok := h.requireGatewayUser(r)
+	if !ok {
 		errJSON(w, http.StatusUnauthorized, "未授权：缺少网关用户身份")
 		return
 	}
@@ -311,6 +312,12 @@ func (h *Handler) ReadRaw(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(meta.Content))
+
+	// 注册文件监控（与 ReadFile 一致）：外部修改后推送给该用户的客户端。
+	// raw 通道打开的文件同样需要 watcher——漏掉会导致「外部修改不推送」。
+	if h.Hub != nil {
+		h.Hub.Watch(absPath, user.UID)
+	}
 }
 
 // WriteRaw POST /api/file/write-raw?path=...&mtime=...&bom=1&enc=gb18030
