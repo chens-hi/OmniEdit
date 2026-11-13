@@ -82,13 +82,8 @@ func main() {
 	}
 	log.Printf("[prefs] 配置目录: %s", prefsDir)
 
-	// 日志落盘：优先 ${TRIM_APPDATA}/logs/（用户文件管理器可见），
-	// 无 TRIM_APPDATA 时回退 ${prefsDir}/logs/（conf 目录内）。
-	logBase := os.Getenv("TRIM_APPDATA")
-	if logBase == "" {
-		logBase = prefsDir
-	}
-	logFile := setupLogFile(logBase)
+	// 日志落盘：${prefsDir}/logs/omniedit-YYYY-MM-DD.log
+	logFile := setupLogFile(prefsDir)
 	if logFile != nil {
 		log.SetOutput(io.MultiWriter(os.Stderr, logFile))
 		defer logFile.Close()
