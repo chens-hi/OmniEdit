@@ -1,7 +1,7 @@
 appname=omniedit
-version=0.6.36
+version=0.6.37
 display_name=OmniEdit
-desc=面向飞牛 fnOS 的原生文件编辑器。支持 42 种语言语法高亮、10MB 大文件流畅编辑、Markdown/HTML 实时预览、多标签页、会话自动恢复、深浅色主题跟随。原生应用，快速启动，低资源占用，文件留在你的 NAS 上。
+desc=飞牛原生文件编辑器，一个工具覆盖 NAS 上的所有文件编辑场景。\n\n主要功能：\n• 42 种语言语法高亮（JS/TS/Python/Go/C/C++/Java/Rust 等）\n• 10MB 大文件流畅编辑，打开上限行业领先\n• Markdown / HTML 实时预览\n• 多标签页编辑，支持拖拽排序\n• 会话自动恢复，下次启动还原所有页签\n• 查找与替换\n• 编码识别（UTF-8 / GB18030）\n• 外部变更实时检测\n• 深浅色主题跟随宿主系统\n• 中英双语界面\n\n原生 Go 后端 + Vue 3 前端，快速启动，低资源占用，文件留在你的 NAS 上。
 source=thirdparty
 platform=all
 maintainer=chens-hi
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.6.36: 更新应用介绍文案（稍详细版）
+changelog=0.6.37: 应用介绍改为多行详细版
