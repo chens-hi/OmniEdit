@@ -7,7 +7,7 @@
 *A native, all-format file editor for fnOS.*
 
 [![Platform](https://img.shields.io/badge/Platform-fnOS-blue)]()
-[![License](https://img.shields.io/badge/License-TBD-green)]()
+[![Version](https://img.shields.io/badge/Version-0.6.33-green)]()
 
 </div>
 
@@ -41,23 +41,60 @@
 
 ## 特性 / Features
 
-> 🚧 **开发中 / Work in progress** — ✅ 已完成 · 🚧 进行中 · ⬜ 规划中
+### 编辑核心 / Editor Core
 
 - [x] 纯文本编辑 / Plain text editing
-- [x] 语法高亮（JSON / Markdown / HTML / XML / Go / C#）/ Syntax highlighting
-- [x] Markdown 编辑与预览 / Markdown editing & preview
 - [x] 多标签页 / Multi-tab
-- [x] 记事本形态：无目录侧栏，纯编辑窗口 / Notepad-style: no file browser, editor only
-- [x] 无标题草稿 + 另存为（宿主选目录/文件名）/ Untitled docs + Save As via host picker
-- [x] 右键打开未授权文件 → 自动请求宿主授权后重试 / Auto authorization on 403
-- [x] 文件保存冲突检测 / Save conflict detection
+- [x] 语法高亮（42 语言族，覆盖 120+ 扩展名）/ Syntax highlighting for 42 language families
+- [x] 代码折叠 / Code folding
+- [x] 查找与替换 / Find & replace
+- [x] 自动换行 / Word wrap
+- [x] 缩进风格（空格 2/4/8 或 Tab）/ Indent style
+- [x] 内置等宽字体（JetBrains Mono）/ Built-in monospace font
+
+### 文件与保存 / File & Save
+
+- [x] 大文件支持（打开上限 10MB，流畅编辑）/ Large file support (up to 10MB)
+- [x] 文件写入原子化（临时文件 + rename，防损坏）/ Atomic file writes
+- [x] mtime 冲突检测 / Save conflict detection
+- [x] 编码识别（UTF-8 / UTF-8 BOM / GB18030）/ Encoding detection
+- [x] 行尾风格识别（LF / CRLF / Mixed）/ Line ending detection
+- [x] 另存为（宿主选目录/文件名）/ Save As via host picker
+- [x] 右键打开未授权文件 → 自动请求宿主授权 / Auto authorization on 403
+
+### 预览 / Preview
+
+- [x] Markdown 实时预览 / Markdown live preview
+- [x] HTML 实时预览 / HTML live preview
+- [x] 相对路径图片/资源重写 / Relative resource URL rewriting
+- [x] 预览区语法高亮跟随主题 / Preview theme follows editor
+
+### 会话与外部变更 / Session & External Changes
+
+- [x] 会话自动恢复（下次启动还原所有页签）/ Session restore
+- [x] 启动快速恢复（活动页签优先加载）/ Fast boot with active-tab priority
+- [x] 外部变更检测（WebSocket 推送，按用户隔离）/ External-change detection
+- [x] 外部修改询问（重载 / 保持当前）/ External change prompt
+
+### 界面与体验 / UI & UX
+
 - [x] 主题跟随宿主（深/浅色）/ Theme following host
 - [x] 语言跟随宿主（中/英文 i18n）/ Language following host
-- [x] 大文件保护（>5MB 只读预览）/ Large-file protection
-- [x] 外部变更检测（WebSocket 推送，按用户隔离）/ External-change detection
+- [x] 状态栏（路径 / 编码 / 行尾 / 行列 / 字节数）/ Status bar
+- [x] 页签拖拽排序 / Tab drag reordering
+- [x] 批量关闭确认 / Batch close confirmation
+- [x] 移动端窄屏适配 / Mobile narrow-screen support
+- [x] 右键上下文菜单 / Context menus
+- [x] 预览/编辑悬浮切换按钮 / Floating preview toggle
+
+### 安全与日志 / Security & Logging
+
+- [x] 路径穿越防护（`..` 段过滤 + EvalSymlinks）/ Path traversal protection
+- [x] 符号链接逃逸检测 / Symlink escape detection
+- [x] 按用户隔离文件访问 / Per-user file access isolation
+- [x] 文件写入原子化 / Atomic file writes
+- [x] 每日日志 + 7 天自动清理 / Daily log files with 7-day retention
 - [x] 本地调试模式（无需 NAS）/ Local debug mode
-- [x] 主题/语言实时跟随宿主（SDK `os/theme` / `os/language` 事件）/ Live theme & language sync
-- [ ] Office（docx/xlsx/pptx）/ Office formats
 
 ---
 
@@ -84,7 +121,7 @@ OmniEdit/
 └── README.md
 ```
 
-> 🚧 目前处于 **M1 核心编辑功能已实现** 阶段（多标签 / 语法高亮 / Markdown 预览 / 目录浏览 / 冲突检测 / 本地调试）。开放 API 授权与用户 ACL 联调需在真实 NAS 环境完成。
+> 当前状态：核心编辑功能完整，已支持 42 语言族语法高亮、大文件（10MB）编辑、Markdown/HTML 预览、会话恢复、外部变更检测、移动端适配。开放 API 授权与用户 ACL 联调需在真实 NAS 环境完成。
 
 ## 快速开始 / Getting Started
 

@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.6.33
+version=0.6.34
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.6.33: 维护者信息修正
+changelog=0.6.34: 更新 README 特性列表与项目状态说明
