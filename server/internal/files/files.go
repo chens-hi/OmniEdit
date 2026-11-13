@@ -406,23 +406,37 @@ func Write(req WriteRequest) (newMTime string, err error) {
 		}
 	}
 
+	// 原子写：统一走临时文件 + rename，确保写入中途崩溃不会留下半截损坏文件。
+	// 与 prefs.go 的原子写策略一致。临时文件建在同目录（rename 同文件系统内原子）。
+	tmp, err := os.CreateTemp(filepath.Dir(req.Path), ".omniedit-tmp-*")
+	if err != nil {
+		return "", fmt.Errorf("创建临时文件失败: %w", err)
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(out); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return "", fmt.Errorf("写入临时文件失败: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return "", err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return "", err
+	}
+	// 已存在文件保留原权限；新建文件用 0644。
 	if !creating {
-		if err := os.WriteFile(req.Path, out, mode); err != nil {
+		if err := os.Chmod(tmpName, mode); err != nil {
+			os.Remove(tmpName)
 			return "", err
 		}
-	} else {
-		// O_EXCL 防竞态覆盖（极小窗口内他人已创建则报错而非静默覆盖）。
-		f, err := os.OpenFile(req.Path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
-		if err != nil {
-			return "", err
-		}
-		if _, err := f.Write(out); err != nil {
-			f.Close()
-			return "", err
-		}
-		if err := f.Close(); err != nil {
-			return "", err
-		}
+	}
+	if err := os.Rename(tmpName, req.Path); err != nil {
+		os.Remove(tmpName)
+		return "", fmt.Errorf("原子替换失败: %w", err)
 	}
 	newInfo, err := os.Stat(req.Path)
 	if err != nil {

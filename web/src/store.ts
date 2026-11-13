@@ -138,6 +138,8 @@ export interface Tab {
   diskMtime?: string;
   /** 询问框是否正在展示（防重入，不持久化、不参与模板渲染）。 */
   externalPrompting?: boolean;
+  /** 编辑序号：每次用户输入 +1，保存时用它做 O(1) 竞态检测（代替二次全文序列化）。 */
+  editSeq?: number;
 }
 
 export const useEditorStore = defineStore('editor', () => {
@@ -594,15 +596,19 @@ export const useEditorStore = defineStore('editor', () => {
       return false;
     }
     try {
+      // 快照前记录编辑序号：写入完成后比对是否在等待期间又产生了新编辑。
+      // 比全文序列化 O(n) 更轻——O(1) 整数比对即可判断竞态。
+      const seqBefore = tab.editSeq ?? 0;
       const content = getTabContent(id);
       tab.saving = true;
       const { mtime } = await writeFile(tab.path, content, tab.mtime, tab.hasBom, tab.encoding);
       tab.mtime = mtime;
-      // 保存等待期间用户可能又输入了内容——那些编辑不在本次写入里。
-      // 不能无条件 dirty=false，否则那些新编辑看起来像是已保存了。
-      // 比对当前编辑器全文与刚写入的内容，不一致则保持 dirty=true。
-      const current = getTabContent(id);
-      tab.dirty = current !== content;
+      // 仅当等待期间没有新编辑时才清除 dirty：
+      // 若用户在写入等待期间又打了字（editSeq 变化），那些编辑不在本次写入里，
+      // 必须保持 dirty=true，否则新修改看起来像是已保存了。
+      if ((tab.editSeq ?? 0) === seqBefore) {
+        tab.dirty = false;
+      }
       return true;
     } catch (e) {
       setError(`${t('saveFailed')}：${(e as Error).message}`);
@@ -825,10 +831,12 @@ export const useEditorStore = defineStore('editor', () => {
     return tabById(id)?.content ?? '';
   }
 
-  /** 每键编辑标记（轻量）：只置 dirty，不触碰 content（消灭每键 O(n) toString）。 */
+  /** 每键编辑标记（轻量）：置 dirty + editSeq++（保存竞态检测用 O(1) 整数比对）。 */
   function markDirtyLight(id: number) {
     const tab = tabById(id);
-    if (tab) tab.dirty = true;
+    if (!tab) return;
+    tab.dirty = true;
+    tab.editSeq = (tab.editSeq ?? 0) + 1;
   }
 
   /** 把当前编辑器全文写回 tab.content 快照（切页签 / 预览防抖同步时由 App 调）。 */
