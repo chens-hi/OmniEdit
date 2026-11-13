@@ -32,13 +32,14 @@
         "py", "go", "java", "cs", "rs", "php", "rb",
         "c", "h", "cpp", "hpp",
         "sh", "bash", "zsh", "ps1", "bat", "cmd",
-        "sql", "lua",
+        "sql", "lua", "pl", "pm", "scala", "groovy",
+        "r", "kts", "psm1", "asm",
 
         "md", "markdown",
         "html", "htm",
         "css", "scss", "less",
         "txt", "log",
-        "swift", "kt", "dart"
+        "swift", "kt", "dart", "tex", "reg"
       ],
       "noDisplay": true
     }
