@@ -1,7 +1,7 @@
 appname=omniedit
-version=0.6.34
+version=0.6.36
 display_name=OmniEdit
-desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
+desc=面向飞牛 fnOS 的原生文件编辑器。支持 42 种语言语法高亮、10MB 大文件流畅编辑、Markdown/HTML 实时预览、多标签页、会话自动恢复、深浅色主题跟随。原生应用，快速启动，低资源占用，文件留在你的 NAS 上。
 source=thirdparty
 platform=all
 maintainer=chens-hi
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.6.34: 更新 README 特性列表与项目状态说明
+changelog=0.6.36: 更新应用介绍文案（稍详细版）
