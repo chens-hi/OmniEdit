@@ -21,13 +21,14 @@
       "allUsers": true,
       "fileTypes": [
         "txt", "log", "md", "markdown",
-        "json", "jsonc", "yml", "yaml", "toml",
-        "ini", "conf", "env", "properties",
-        "html", "htm", "xml", "svg", "css", "scss", "less",
+        "json", "jsonc", "json5", "yml", "yaml", "toml",
+        "ini", "conf", "env", "properties", "editorconfig",
+        "html", "htm", "xml", "svg", "wxs", "css", "scss", "less",
         "js", "mjs", "cjs", "ts", "jsx", "tsx",
         "py", "go", "java", "c", "h", "cpp", "hpp", "cs", "rs", "php",
-        "rb", "lua", "pl", "sh", "bash", "zsh", "ps1",
-        "sql", "swift", "kt", "dart",
+        "rb", "lua", "pl", "sh", "bash", "zsh", "ps1", "psm1",
+        "sql", "swift", "kt", "kts", "dart", "groovy",
+        "r",
         "bat", "cmd", "dockerfile", "cmake", "diff", "patch"
       ],
       "noDisplay": true
