@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.6.40
+version=0.6.41
 display_name=OmniEdit
 desc=飞牛原生文件编辑器——一个工具覆盖 NAS 上的所有文件编辑场景。<br><br><b>核心能力</b><br>• 42 种语言语法高亮（JS/TS/Python/Go/C/C++/Java/Rust/PHP 等）<br>• 10MB 大文件流畅编辑，毫秒级打开<br>• Markdown / HTML 实时预览，支持图片与链接<br>• 多标签页 + 拖拽排序<br>• 查找替换、代码折叠、自动缩进<br>• 编码识别（UTF-8 / GB18030）<br><br><b>智能体验</b><br>• 会话自动恢复，下次启动还原所有页签<br>• 外部变更实时检测，主动询问是否重载<br>• 保存冲突检测，防止覆盖他人修改<br>• 深浅色主题跟随宿主系统<br>• 中英双语界面<br><br>原生 Go 后端 + Vue 3 前端，快速启动，低资源占用，文件留在你的 NAS 上。
 source=thirdparty
