@@ -67,6 +67,14 @@ export function readFile(path: string): Promise<{ file: FileMeta }> {
   return request(`${BASE}/api/file/read?path=${encodeURIComponent(path)}`);
 }
 
+/**
+ * 轻量文件信息（不读内容）：只返回大小与 mtime。
+ * 用于打开前的前置校验（编辑上限可调后，先知道大小再决定是否拉全文）。
+ */
+export function statFile(path: string): Promise<{ size: number; mtime: string }> {
+  return request(`${BASE}/api/file/stat?path=${encodeURIComponent(path)}`);
+}
+
 /** raw 读取通道的元数据（从 X-File-Meta 响应头 base64 还原）。 */
 interface RawMeta {
   size: number;

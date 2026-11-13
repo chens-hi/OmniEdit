@@ -166,6 +166,7 @@ func buildMux(prefix, staticDir string, h *api.Handler) http.Handler {
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("/api/health", h.Health)
 	apiMux.HandleFunc("/api/ws", h.WSHandler)
+	apiMux.HandleFunc("/api/file/stat", h.StatFile)
 	apiMux.HandleFunc("/api/file/read", h.ReadFile)
 	apiMux.HandleFunc("/api/file/read-raw", h.ReadRaw)
 	apiMux.HandleFunc("/api/file/raw", h.RawFile)

@@ -199,10 +199,10 @@ type ReadMeta struct {
 
 // 大文件保护阈值。
 const (
-	// MaxOpenBytes 可打开的文件上限（10 MB）。超过直接拒绝（ErrFileTooLarge），
-	// 无确认/截断预览路径——前端性能优化后 10MB 内可流畅编辑，更大的文件
-	// JSON 传输通道先成为瓶颈，明确提示比模糊处理更干净。
-	MaxOpenBytes int64 = 10 << 20
+	// MaxOpenBytes 硬上限（20 MB）。用户可在前端设置更低的「编辑上限」
+	// （存 prefs，前端 stat 预检拦截）；后端此值是**绝对兜底**——防止用户
+	// 或异常客户端把 500MB 文件灌进来拖死后端。JSON/raw 两条通道共用。
+	MaxOpenBytes int64 = 20 << 20
 )
 
 // ErrFileTooLarge 表示文件超过打开上限，无法处理。

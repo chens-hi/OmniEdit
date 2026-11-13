@@ -29,6 +29,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -142,6 +143,43 @@ func (h *Handler) ReadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "file": meta})
+}
+
+// StatFile GET /api/file/stat?path=...
+// 轻量文件信息：只返回大小与 mtime，不读内容。用于打开前的前置校验
+// （编辑上限可调后，前端需要在拉取 10MB 内容之前先知道文件多大）。
+func (h *Handler) StatFile(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requireGatewayUser(r); !ok {
+		errJSON(w, http.StatusUnauthorized, "未授权：缺少网关用户身份")
+		return
+	}
+	rawPath := r.URL.Query().Get("path")
+	absPath, err := files.CleanAndValidate(rawPath)
+	if err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.devRootGuard(absPath); err != nil {
+		errJSON(w, http.StatusForbidden, err.Error())
+		return
+	}
+	info, err := os.Stat(absPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			errJSON(w, http.StatusNotFound, files.ErrNotFound.Error())
+			return
+		}
+		errJSON(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if info.IsDir() {
+		errJSON(w, http.StatusBadRequest, "目标是目录而非文件")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"size":  info.Size(),
+		"mtime": info.ModTime().Format(time.RFC3339Nano),
+	})
 }
 
 // RawFile GET /api/file/raw?path=... —— 原样流式输出文件字节（按扩展名给

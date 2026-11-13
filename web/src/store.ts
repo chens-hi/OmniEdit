@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { readFileRaw, writeFileRaw, unwatchFile, getPrefs, putPrefs, type FileMeta } from './api';
+import { readFileRaw, writeFileRaw, statFile, unwatchFile, getPrefs, putPrefs, type FileMeta } from './api';
 import { sdk } from './api';
 import { t } from './i18n';
 import { BUILTIN_FONTS, DEFAULT_FONT_ID, applyEditorFont } from './fonts';
@@ -25,7 +25,11 @@ export const PREF_KEYS = {
   showLineBreaks: 'showLineBreaks',
   autoPreview: 'autoPreview',
   lastSaveDir: 'lastSaveDir',
+  maxEditMB: 'maxEditMB',
 } as const;
+
+/** 编辑上限的可选项（MB）。用户在视图菜单选择，存 prefs。 */
+export const MAX_EDIT_OPTIONS = [5, 10, 15, 20] as const;
 
 /** 默认值：与 KEY 对齐，一屏看全所有配置项（单一事实来源）。 */
 export const PREF_DEFAULTS = {
@@ -41,6 +45,7 @@ export const PREF_DEFAULTS = {
   showLineBreaks: false,
   autoPreview: true,
   lastSaveDir: '',
+  maxEditMB: 10,
 };
 
 export type PrefKey = keyof typeof PREF_KEYS;
@@ -180,6 +185,8 @@ export const useEditorStore = defineStore('editor', () => {
   const showLineBreaks = ref<boolean>(PREF_DEFAULTS.showLineBreaks);
   // 自动预览总开关（视图菜单「自动预览」勾选）：可预览类型（md/htm/html）打开/切换时按它决定是否自动显示预览。
   const autoPreview = ref<boolean>(PREF_DEFAULTS.autoPreview);
+  // 大文件编辑上限（MB）：用户可在视图菜单调整；后端另有 20MB 硬上限兜底。
+  const maxEditMB = ref<number>(PREF_DEFAULTS.maxEditMB);
 
   /** restoreGuard=true 期间不写盘：恢复过程产生的中间态不是用户操作。 */
   let restoreGuard = false;
@@ -209,6 +216,7 @@ export const useEditorStore = defineStore('editor', () => {
       [PREF_KEYS.showLineBreaks]: showLineBreaks.value,
       [PREF_KEYS.autoPreview]: autoPreview.value,
       [PREF_KEYS.lastSaveDir]: lastSaveDir.value,
+      [PREF_KEYS.maxEditMB]: maxEditMB.value,
       [SESSION_KEY]: sessionSnapshot(),
     };
   }
@@ -308,6 +316,11 @@ export const useEditorStore = defineStore('editor', () => {
   /** 自动预览总开关：视图菜单「自动预览」勾选，即时生效并持久化。 */
   function setAutoPreview(on: boolean) {
     autoPreview.value = on;
+    persistPrefs();
+  }
+  /** 大文件编辑上限（MB）：视图菜单选择，即时生效并持久化。 */
+  function setMaxEditMB(mb: number) {
+    maxEditMB.value = mb;
     persistPrefs();
   }
   function setLineWrapping(on: boolean) {
@@ -509,6 +522,21 @@ export const useEditorStore = defineStore('editor', () => {
    * 标签栏完全不受影响。
    */
   async function openFile(path: string) {
+    // 用户编辑上限校验（stat 只取大小，不读内容；省一次无谓的 10MB+ 传输）。
+    // 后端仍有 20MB 硬上限兜底（防 500MB 文件拖死后端）。
+    try {
+      const { size } = await statFile(path);
+      if (size > maxEditMB.value * 1024 * 1024) {
+        setError(t('overEditLimit', {
+          size: (size / 1024 / 1024).toFixed(1),
+          limit: maxEditMB.value,
+        }));
+        return;
+      }
+    } catch (e) {
+      // stat 失败（不存在/无权限）不在此拦截：让后续 readFileRaw 走完整
+      // 错误链路（404/403/415/413），reportOpenError 给出针对性提示。
+    }
     // 不再做扩展名白名单校验：打开能力由后端按**内容**判定
     // （二进制检测 + UTF-8/GB18030 编码识别），无后缀文件也能正常打开。
     // 二进制/超大/编码不可识别时，后端返回 415/413，由 reportOpenError
@@ -966,6 +994,7 @@ export const useEditorStore = defineStore('editor', () => {
       showLineBreaks.value = pick(PREF_KEYS.showLineBreaks, showLineBreaks.value);
       autoPreview.value = pick(PREF_KEYS.autoPreview, autoPreview.value);
       lastSaveDir.value = pick(PREF_KEYS.lastSaveDir, lastSaveDir.value);
+      maxEditMB.value = pick(PREF_KEYS.maxEditMB, maxEditMB.value);
     }
 
     // 恢复会话：后端 session（唯一来源）。旧版本会话可能超过标签上限：
@@ -1044,6 +1073,7 @@ export const useEditorStore = defineStore('editor', () => {
     showTabs.value = PREF_DEFAULTS.showTabs;
     showLineBreaks.value = PREF_DEFAULTS.showLineBreaks;
     lastSaveDir.value = PREF_DEFAULTS.lastSaveDir;
+    maxEditMB.value = PREF_DEFAULTS.maxEditMB;
 
     // 后端写回默认值快照（含空会话）= 清空持久化偏好与会话（下次 initPrefs 走默认值）。
     // 不再写 {}：后端 Set 对空对象虽合法，但快照化后语义更明确，且复用同一条
@@ -1067,6 +1097,7 @@ export const useEditorStore = defineStore('editor', () => {
     showSpaces, showTabs, showLineBreaks, autoPreview,
     setIndentMode, setFontSize, setFontFamily, setThemeMode, setLineWrapping, setShowLineNumbers,
     setShowSpaces, setShowTabs, setShowLineBreaks, setAutoPreview,
+    setMaxEditMB,
     builtinFonts: BUILTIN_FONTS,
     openViaPicker,
     openFile, saveActive, saveTab, closeTab, newUntitled, setError,
@@ -1075,6 +1106,7 @@ export const useEditorStore = defineStore('editor', () => {
     reloadFile, tabById, promptExternalChange,
     initPrefs, persistSession, prefsBackendOk, resetToDefaults,
     booting,
+    maxEditMB,
   };
 });
 
@@ -1089,5 +1121,7 @@ function isMd(path: string): boolean {
 }
 
 export type { FileMeta };
+
+
 
 

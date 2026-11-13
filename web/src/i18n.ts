@@ -28,6 +28,10 @@ const dict = {
     zh: '文件是 {enc} 编码，暂不支持编辑（请另存为 UTF-8）',
     en: 'This file is {enc} encoded, which is not supported yet. Please save as UTF-8',
   },
+  overEditLimit: {
+    zh: '文件过大：{size} MB，超过当前编辑上限 {limit} MB（可在「视图」菜单调整）',
+    en: 'File too large: {size} MB exceeds your {limit} MB editing limit (adjustable in View menu)',
+  },
   saveFailed: { zh: '保存失败', en: 'Save failed' },
   // 打开失败的分类文案：一句话说清结论 + 数据，不用嵌套冒号。
   openTooLarge: {
@@ -73,6 +77,7 @@ const dict = {
   menuFind: { zh: '查找…', en: 'Find…' },
   menuReplace: { zh: '替换…', en: 'Replace…' },
   menuWordWrap: { zh: '自动换行', en: 'Word Wrap' },
+  menuMaxEdit: { zh: '大文件编辑上限', en: 'Max Edit Size' },
   menuDisplay: { zh: '显示符号', en: 'Show Symbols' },
   showSpacesLabel: { zh: '空格', en: 'Spaces' },
   showTabsLabel: { zh: '制表符', en: 'Tabs' },

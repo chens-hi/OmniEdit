@@ -170,6 +170,19 @@ const menus = computed<Menu[]>((): Menu[] => {
         },
         { type: 'checkbox', label: t('menuWordWrap'), checked: () => store.lineWrapping, action: () => store.setLineWrapping(!store.lineWrapping) },
         { type: 'checkbox', label: t('menuAutoPreview'), checked: () => store.autoPreview, action: () => store.setAutoPreview(!store.autoPreview) },
+        {
+          // 大文件编辑上限 ▸ 5/10/15/20 MB，存 prefs。后端另有 20MB 硬上限兜底。
+          // 父项右侧显示当前值。
+          type: 'item',
+          label: t('menuMaxEdit'),
+          valueText: () => `${store.maxEditMB} MB`,
+          children: [
+            { type: 'checkbox', label: '5 MB',  checked: () => store.maxEditMB === 5,  action: () => store.setMaxEditMB(5) },
+            { type: 'checkbox', label: '10 MB', checked: () => store.maxEditMB === 10, action: () => store.setMaxEditMB(10) },
+            { type: 'checkbox', label: '15 MB', checked: () => store.maxEditMB === 15, action: () => store.setMaxEditMB(15) },
+            { type: 'checkbox', label: '20 MB', checked: () => store.maxEditMB === 20, action: () => store.setMaxEditMB(20) },
+          ],
+        },
         { type: 'sep' },
         {
           // 主题 ▸ 自动（跟随宿主系统）/浅色/深色，存配置表默认自动。
