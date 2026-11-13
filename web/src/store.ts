@@ -5,6 +5,7 @@ import { sdk } from './api';
 import { t } from './i18n';
 import { BUILTIN_FONTS, DEFAULT_FONT_ID, applyEditorFont } from './fonts';
 import { setThemeOverride, type ThemeMode } from './theme';
+import { previewKind } from './language';
 
 // ---- 编辑器设置（菜单栏驱动；后端 prefs 唯一持久化源，无 localStorage 兜底） ----
 
@@ -394,7 +395,7 @@ export const useEditorStore = defineStore('editor', () => {
     if (existing) return existing;
     const draft: Tab = {
       id: ++tabSeq, path, name: fileNameOf(path), content: '', mtime: '',
-      dirty: false, saving: false, isMarkdown: isMd(path), previewKind: previewKindOf(path), loading: true, readonly: false,
+      dirty: false, saving: false, isMarkdown: isMd(path), previewKind: previewKind(path), loading: true, readonly: false,
       hasBom: false,
       encoding: 'utf-8',
       lineEnding: '',
@@ -459,6 +460,13 @@ export const useEditorStore = defineStore('editor', () => {
       // 取出括号里的判定依据，拼成用户可读的一句话
       const reason = raw.match(/（([^）]+)）/)?.[1];
       setError(reason ? t('binaryNotSupportedReason', { reason }) : t('binaryNotSupported'));
+      return;
+    }
+    // UTF-16 编码：后端 ErrUnsupportedEncoding 文案形如
+    // 「文件是 UTF-16 LE 编码，暂不支持编辑（请另存为 UTF-8）: /path」
+    const enc = raw.match(/文件是 (\S+ \S+) 编码/)?.[1];
+    if (enc) {
+      setError(t('unsupportedEncoding', { enc }));
       return;
     }
     if (raw.includes('UTF-8')) {
@@ -643,7 +651,7 @@ export const useEditorStore = defineStore('editor', () => {
       tab.path = target;
       tab.name = fileNameOf(target);
       tab.isMarkdown = isMd(target);
-      tab.previewKind = previewKindOf(target);
+      tab.previewKind = previewKind(target);
       tab.mtime = mtime;
       tab.dirty = false;
       // 不提示：页签名已变成新文件名、黄点消失，反馈已经很明确。
@@ -1035,17 +1043,10 @@ function fileNameOf(path: string): string {
   return parts[parts.length - 1] || path;
 }
 
+/** Tab.isMarkdown 由 previewKind 推导——避免两处维护同一套后缀规则。 */
 function isMd(path: string): boolean {
-  const ext = fileNameOf(path).split('.').pop()?.toLowerCase() ?? '';
-  return ext === 'md' || ext === 'markdown';
-}
-
-/** 预览渲染类型（md/htm/html 有预览，其它 null），与 language.ts 的 previewKind 同规则。 */
-function previewKindOf(path: string): 'markdown' | 'html' | null {
-  const ext = fileNameOf(path).split('.').pop()?.toLowerCase() ?? '';
-  if (ext === 'md' || ext === 'markdown') return 'markdown';
-  if (ext === 'htm' || ext === 'html') return 'html';
-  return null;
+  return previewKind(path) === 'markdown';
 }
 
 export type { FileMeta };
+

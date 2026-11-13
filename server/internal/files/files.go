@@ -252,6 +252,42 @@ const binaryProbeBytes = 8192
 // 纯文本（含中文 UTF-8/GBK）通常 < 1%；正常的控制字符只有 \t \n \r。
 const binaryControlRatio = 0.10
 
+// ErrUnsupportedEncoding 表示文件使用的是当前不支持的文本编码（如 UTF-16）。
+// 与 ErrBinary 区分开：这类文件是**文本**，只是编码暂不支持，
+// 提示文案应说明「换编码另存」而不是「这是二进制文件」。
+type ErrUnsupportedEncoding struct {
+	Path   string
+	Encoding string // "UTF-16 LE" / "UTF-16 BE"
+}
+
+func (e ErrUnsupportedEncoding) Error() string {
+	return fmt.Sprintf("文件是 %s 编码，暂不支持编辑（请另存为 UTF-8）: %s", e.Encoding, e.Path)
+}
+
+// UTF-16 BOM（小端 FF FE / 大端 FE FF）。注意 UTF-32 LE 的 BOM 是
+// FF FE 00 00，会先被 UTF-16 LE 判中——这里只做识别提示，不做解码，
+// 因此不影响正确性。
+var (
+	utf16LEBOM = []byte{0xFF, 0xFE}
+	utf16BEBOM = []byte{0xFE, 0xFF}
+)
+
+// detectUTF16 通过 BOM 判断是否为 UTF-16 文本。
+// UTF-16 正文含大量 0x00（ASCII 字符的高字节），会被 looksBinary 误判为二进制，
+// 故必须在二进制检测**之前**先识别 BOM。
+func detectUTF16(data []byte) string {
+	if len(data) < 2 {
+		return ""
+	}
+	if data[0] == utf16LEBOM[0] && data[1] == utf16LEBOM[1] {
+		return "UTF-16 LE"
+	}
+	if data[0] == utf16BEBOM[0] && data[1] == utf16BEBOM[1] {
+		return "UTF-16 BE"
+	}
+	return ""
+}
+
 // looksBinary 判断一段字节是否为二进制内容。
 //
 // 判定规则（任一成立即判二进制）：
@@ -261,6 +297,8 @@ const binaryControlRatio = 0.10
 //     序列的每个字节都 >= 0x80，因此中文不会误判）。
 //
 // 这套规则与扩展名完全无关，因此无后缀文件、错后缀文件都能正确识别。
+// 注意：UTF-16 文本因含大量 NUL 会被本函数误判，
+// 调用方须先用 detectUTF16 排除（见 decodeText）。
 func looksBinary(data []byte) (bool, string) {
 	if len(data) == 0 {
 		return false, "" // 空文件按文本处理
@@ -299,6 +337,11 @@ func looksBinary(data []byte) (bool, string) {
 //   - GB18030 也解不了（如 Big5/Shift-JIS/其它二进制）返回 ErrNotUTF8，
 //     绝不静默乱码。
 func decodeText(data []byte, meta *ReadMeta) error {
+	// UTF-16 检测必须在二进制检测之前：UTF-16 正文含大量 0x00
+	// （ASCII 字符的高字节），会被 looksBinary 误判为二进制。
+	if enc := detectUTF16(data); enc != "" {
+		return ErrUnsupportedEncoding{Path: meta.Path, Encoding: enc}
+	}
 	// 二进制检测必须在编码判断之前：GB18030 几乎能解码任何字节流，
 	// 若先走编码分支，图片/可执行文件会被"成功"解码成乱码文本。
 	if isBin, reason := looksBinary(data); isBin {

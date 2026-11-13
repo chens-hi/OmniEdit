@@ -9,19 +9,13 @@ export const lang = ref<Lang>('zh');
 /** 文案字典。键为语义标识，值为各语言文案。 */
 const dict = {
   // 工具栏 / 通用
-  appName: { zh: 'OmniEdit', en: 'OmniEdit' },
   save: { zh: '保存', en: 'Save' },
-  saveShortcut: { zh: '保存 (Ctrl+S)', en: 'Save (Ctrl+S)' },
   newFile: { zh: '新建', en: 'New' },
   saving: { zh: '保存中…', en: 'Saving…' },
   saveInProgressSkip: { zh: '正在保存的文件已跳过', en: 'File being saved was skipped' },
   loading: { zh: '加载中…', en: 'Loading…' },
   untitled: { zh: '无标题', en: 'Untitled' },
   openFailed: { zh: '打开失败', en: 'Open failed' },
-  unsupportedFormat: {
-    zh: '不支持的文件格式（.{ext}），无法打开',
-    en: 'Unsupported file format (.{ext})',
-  },
   binaryNotSupported: {
     zh: '不支持编辑 .{ext} 文件（二进制/容器格式）',
     en: '.{ext} files are binary and cannot be edited',
@@ -29,6 +23,10 @@ const dict = {
   binaryNotSupportedReason: {
     zh: '文件是二进制内容，无法作为文本编辑（{reason}）',
     en: 'This file appears to be binary ({reason}) and cannot be edited as text',
+  },
+  unsupportedEncoding: {
+    zh: '文件是 {enc} 编码，暂不支持编辑（请另存为 UTF-8）',
+    en: 'This file is {enc} encoded, which is not supported yet. Please save as UTF-8',
   },
   saveFailed: { zh: '保存失败', en: 'Save failed' },
   // 打开失败的分类文案：一句话说清结论 + 数据，不用嵌套冒号。
@@ -45,7 +43,6 @@ const dict = {
   // 另存为对话框
   saveAsDraftTitle: { zh: '保存为', en: 'Save As' },
   saveAsCopyTitle: { zh: '另存为', en: 'Save a Copy' },
-  saveAsTitle: { zh: '另存为', en: 'Save As' },
   saveLocation: { zh: '保存位置', en: 'Location' },
   choose: { zh: '选择…', en: 'Choose…' },
   fileName: { zh: '文件名', en: 'File name' },
@@ -60,9 +57,6 @@ const dict = {
   pickDirTitle: { zh: '选择保存位置', en: 'Choose a save location' },
   pickDirOk: { zh: '确认授权', en: 'Authorize' },
   promptDir: { zh: '输入保存目录（本地开发模式）：', en: 'Enter save directory (local dev mode):' },
-  promptName: { zh: '输入文件名：', en: 'File name:' },
-  requestingAuth: { zh: '正在请求访问授权…', en: 'Requesting file access…' },
-  confirmCloseDirty: { zh: '有未保存的修改，确定关闭？', en: 'has unsaved changes. Close anyway?' },
   confirmTitle: { zh: '确认', en: 'Confirm' },
   confirmOk: { zh: '确定', en: 'OK' },
 
@@ -83,10 +77,6 @@ const dict = {
   showSpacesLabel: { zh: '空格', en: 'Spaces' },
   showTabsLabel: { zh: '制表符', en: 'Tabs' },
   showLineEndingsLabel: { zh: '换行符', en: 'Line Endings' },
-  showOn: { zh: '显示', en: 'Show' },
-  showOff: { zh: '不显示', en: 'Hide' },
-  on: { zh: '开', en: 'On' },
-  off: { zh: '关', en: 'Off' },
   menuLineNumbers: { zh: '行号', en: 'Line Numbers' },
   menuIndent: { zh: '缩进风格', en: 'Indent Style' },
   menuIndentSpaces: { zh: '空格', en: 'Spaces' },
@@ -107,11 +97,8 @@ const dict = {
   promptOpenPath: { zh: '输入要打开的文件路径（本地开发模式）：', en: 'Enter file path to open (local dev mode):' },
 
   // 状态栏
-  noFile: { zh: '未打开文件', en: 'No file open' },
-  previewTitle: { zh: '预览（Markdown）', en: 'Preview (Markdown)' },
   linesUnit: { zh: '行', en: 'lines' },
   indentSpacesWord: { zh: '空格', en: 'Spaces' },
-  indentMixedWord: { zh: '混合', en: 'Mixed' },
   indentHint: { zh: '缩进风格与宽度（打开时检测）', en: 'Indentation (detected on open)' },
 
   // 搜索浮窗

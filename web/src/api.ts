@@ -93,11 +93,6 @@ export function unwatchFile(path: string): Promise<{ ok: boolean }> {
   });
 }
 
-/** 健康检查。 */
-export function health(): Promise<{ ok: boolean }> {
-  return request(`${BASE}/api/health`);
-}
-
 /**
  * 读取当前用户偏好（菜单设置 / 上次保存目录 / 会话标签）。
  * 返回原始 JSON 对象；缺失时后端返回 {}（前端据默认值初始化）。

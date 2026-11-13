@@ -113,7 +113,8 @@ func (h *Handler) ReadFile(w http.ResponseWriter, r *http.Request) {
 			status = http.StatusNotFound
 		} else if errors.Is(err, files.ErrFileTooLarge{}) {
 			status = http.StatusRequestEntityTooLarge
-		} else if errors.Is(err, files.ErrBinary{}) || errors.Is(err, files.ErrNotUTF8{}) {
+		} else if errors.Is(err, files.ErrBinary{}) || errors.Is(err, files.ErrNotUTF8{}) ||
+			errors.Is(err, files.ErrUnsupportedEncoding{}) {
 			// 内容判定失败（二进制/非文本编码）：415 Unsupported Media Type 更准确
 			status = http.StatusUnsupportedMediaType
 		}

@@ -362,16 +362,10 @@ export function languageExtensionFor(filename: string): Extension[] {
   }
 }
 
-/** 判断是否为 Markdown 文件（用于决定是否显示预览）。 */
-export function isMarkdown(filename: string): boolean {
-  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
-  return ext === 'md' || ext === 'markdown';
-}
-
 /**
  * 预览渲染类型（多后缀共用一个渲染模板）：
  *   - md / markdown → 'markdown'（同一 Markdown 渲染器）
- *   - htm / html → 'html'（同一 iframe 渲染器）
+ *   - htm / html → 'html'（同一 HTML 渲染器）
  *   - 其它 → null（无预览）
  */
 export function previewKind(filename: string): 'markdown' | 'html' | null {
@@ -396,64 +390,17 @@ export function previewKind(filename: string): 'markdown' | 'html' | null {
 export const PREVIEW_MAX_BYTES = 1 << 20;
 
 /**
- * 可打开/可编辑的文件扩展名（小写，不含点）——这是**能力全集**。
+ * 关于「哪些文件能打开」：已不再由前端扩展名列表决定。
  *
- * 与 ui/config 的 fileTypes（注册列表）是**两个独立概念**：
- *   - REGISTERED_EXTENSIONS：给飞牛看的，决定文件管理器右键菜单是否出现
- *     OmniEdit。飞牛对数量有未公开上限（实测 93 个会失败），所以必须精简。
- *   - SUPPORTED_EXTENSIONS（本变量）：给自己看的，决定应用内哪些文件能打开。
- *     不受平台限制，应当覆盖全部有语法高亮的格式。
+ * 打开能力改为**按内容识别**（见 server/internal/files/files.go 的
+ * looksBinary + decodeText）：二进制内容、非 UTF-8/GB18030 编码、
+ * 超过 10MB 的文件由后端拒绝并返回明确错误，前端只负责展示提示。
+ * 因此无后缀文件、错后缀文件都能被正确处理。
  *
- * 两者关系：REGISTERED ⊂ SUPPORTED。注册少只意味着「右键菜单不显示」，
- * 用户仍可通过应用内「打开」菜单输入路径打开任意受支持的格式。
+ * 「能否打开」与「是否有语法高亮」是两个独立维度：
+ *   - 能否打开 → 内容识别（后端）
+ *   - 语法高亮 → languageExtensionFor（按扩展名）+ languageFromShebang（按内容）
  *
- * 与 languageExtensionFor 的 switch case 保持同步——新增语言时两处都要补。
+ * 文件管理器的右键注册列表见 app/ui/config 的 fileTypes（受飞牛数量上限约束，
+ * 只注册高频格式；未注册的格式仍可通过应用内「打开」菜单访问）。
  */
-export const SUPPORTED_EXTENSIONS: ReadonlySet<string> = new Set([
-  // ---- 配置 / 数据 ----
-  'json', 'jsonc', 'json5', 'webmanifest',
-  'yml', 'yaml', 'toml',
-  'ini', 'cfg', 'conf', 'env', 'properties',
-  'editorconfig', 'gitconfig', 'npmrc', 'yarnrc',
-  'dockerfile', 'nginx', 'proto', 'cmake', 'cmakelists',
-  'xml', 'svg', 'wxs', 'wxi',
-  'diff', 'patch',
-  'service', 'timer', 'socket', 'desktop',
-  // ---- 标记 / 文档 / 样式 ----
-  'md', 'markdown', 'html', 'htm',
-  'css', 'scss', 'less',
-  'txt', 'log',
-  // ---- 主流编程语言 ----
-  'js', 'mjs', 'cjs', 'ts', 'jsx', 'tsx',
-  'py', 'go', 'java', 'cs', 'rs', 'php', 'rb',
-  'c', 'h', 'cpp', 'hpp', 'cc',
-  'sh', 'bash', 'zsh', 'ps1', 'psm1', 'psd1', 'bat', 'cmd',
-  'sql', 'lua', 'pl', 'pm',
-  'swift', 'kt', 'kts', 'dart', 'scala', 'groovy', 'gvy',
-  // ---- 其他已支持高亮的语言 ----
-  'r', 'jl', 'hs', 'lhs', 'erl', 'hrl',
-  'clj', 'cljs', 'edn', 'coffee',
-  'vb', 'vbs', 'pas', 'dpr',
-  's', 'asm', 'tcl', 'scm', 'ss',
-  'tex', 'latex', 'reg',
-]);
-
-/**
- * 显式标记为「不适合编辑」的二进制/容器格式：直接拒绝，避免当文本读出乱码。
- * 这些不在 SUPPORTED_EXTENSIONS 里，此处单列是为了给出更准确的提示文案，
- * 而不是笼统的「不支持的格式」。
- */
-export const BINARY_EXTENSIONS: ReadonlySet<string> = new Set([
-  // Office / 文档容器
-  'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'odt', 'ods', 'odp', 'pdf',
-  // 压缩包
-  'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz',
-  // 图片
-  'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'ico', 'tiff', 'psd',
-  // 音视频
-  'mp3', 'mp4', 'avi', 'mkv', 'mov', 'wav', 'flac', 'webm',
-  // 可执行 / 库
-  'exe', 'dll', 'so', 'dylib', 'bin', 'iso', 'dmg', 'msi', 'deb', 'rpm',
-  // 其他
-  'class', 'jar', 'war', 'pyc', 'o', 'a', 'obj', 'ttf', 'otf', 'woff', 'woff2',
-]);

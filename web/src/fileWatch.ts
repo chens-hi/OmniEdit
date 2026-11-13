@@ -90,15 +90,8 @@ function scheduleReconnect() {
   setTimeout(connect, delay);
 }
 
-/** 启动文件变更监听（在 App 挂载时调用一次）。 */
+/** 启动文件变更监听（在 App 挂载时调用一次）。SPA 不卸载，无需对称的 stop。 */
 export function startFileWatch(): void {
   closedByUser = false;
   connect();
-}
-
-/** 停止文件变更监听（App 卸载时调用，可选）。 */
-export function stopFileWatch(): void {
-  closedByUser = true;
-  socket?.close();
-  socket = null;
 }
