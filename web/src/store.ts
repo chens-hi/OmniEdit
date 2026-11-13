@@ -5,6 +5,7 @@ import { sdk } from './api';
 import { t } from './i18n';
 import { BUILTIN_FONTS, DEFAULT_FONT_ID, applyEditorFont } from './fonts';
 import { setThemeOverride, type ThemeMode } from './theme';
+import { SUPPORTED_EXTENSIONS } from './language';
 
 // ---- 编辑器设置（菜单栏驱动；后端 prefs 唯一持久化源，无 localStorage 兜底） ----
 
@@ -476,6 +477,12 @@ export const useEditorStore = defineStore('editor', () => {
    * 标签栏完全不受影响。
    */
   async function openFile(path: string) {
+    // 扩展名校验：不在支持列表内的文件直接提示，不进入后续流程。
+    const ext = path.split('.').pop()?.toLowerCase() ?? '';
+    if (!SUPPORTED_EXTENSIONS.has(ext)) {
+      toast(t('unsupportedFormat'), 'error', 4500);
+      return;
+    }
     const existing = tabs.value.find(tb => tb.path === path);
     if (existing) {
       activeId.value = existing.id;

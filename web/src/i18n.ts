@@ -18,6 +18,7 @@ const dict = {
   loading: { zh: '加载中…', en: 'Loading…' },
   untitled: { zh: '无标题', en: 'Untitled' },
   openFailed: { zh: '打开失败', en: 'Open failed' },
+  unsupportedFormat: { zh: '不支持的文件格式，无法打开', en: 'Unsupported file format' },
   saveFailed: { zh: '保存失败', en: 'Save failed' },
   // 打开失败的分类文案：一句话说清结论 + 数据，不用嵌套冒号。
   openTooLarge: {

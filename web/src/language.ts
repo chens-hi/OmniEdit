@@ -311,3 +311,70 @@ export function previewKind(filename: string): 'markdown' | 'html' | null {
  * 数百毫秒且内存放大数十倍；编辑阈值（10MB）与预览阈值分开，各管各的。
  */
 export const PREVIEW_MAX_BYTES = 1 << 20;
+
+/**
+ * 所有支持打开的文件扩展名（小写，不含点）。
+ * 与 languageExtensionFor 的 switch case 保持同步——
+ * 新增语言时在此补一行，两处由 code review 保证一致。
+ *
+ * 用途：
+ *   1. ui/config fileTypes 注册（fnOS 文件管理器右键菜单）
+ *   2. openFile 时校验扩展名，不支持则提示
+ */
+export const SUPPORTED_EXTENSIONS: ReadonlySet<string> = new Set([
+  // 文本
+  'txt', 'log',
+  // 数据 / 配置
+  'json', 'jsonc', 'json5', 'webmanifest',
+  'yml', 'yaml',
+  'toml',
+  'ini', 'cfg', 'properties', 'env',
+  'editorconfig', 'gitconfig', 'npmrc', 'yarnrc',
+  'conf', 'nginx',
+  'proto',
+  // 标记
+  'md', 'markdown',
+  'html', 'htm',
+  'xml', 'svg', 'wxs', 'wxi',
+  // 样式
+  'css', 'scss', 'less',
+  // 脚本 / 编程
+  'js', 'mjs', 'cjs',
+  'ts',
+  'jsx', 'tsx',
+  'py',
+  'go',
+  'java',
+  'rs',
+  'php',
+  'c', 'h', 'cpp', 'hpp', 'cc',
+  'cs',
+  'sql',
+  'sh', 'bash', 'zsh',
+  'rb',
+  'lua',
+  'pl', 'pm',
+  'ps1', 'psm1', 'psd1',
+  'swift',
+  'kt', 'kts',
+  'dart',
+  'scala',
+  'groovy', 'gvy',
+  'clj', 'cljs', 'edn',
+  'hs', 'lhs',
+  'erl', 'hrl',
+  'jl',
+  'r',
+  'scm', 'ss',
+  'tcl',
+  'coffee',
+  'vb',
+  'vbs',
+  'pas', 'dpr',
+  's', 'asm',
+  'cmake', 'cmakelists',
+  'diff', 'patch',
+  'tex', 'latex',
+  'bat', 'cmd',
+  'reg',
+]);

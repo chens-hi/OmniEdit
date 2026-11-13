@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.6.40: 发布者信息调整为项目名与项目链接
+changelog=0.6.41: 注册全部支持的文件扩展名到系统（80+ 格式）；打开不支持的文件格式时给出提示
