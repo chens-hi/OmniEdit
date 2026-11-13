@@ -4,6 +4,7 @@ import { shell } from '@codemirror/legacy-modes/mode/shell';
 import { ruby } from '@codemirror/legacy-modes/mode/ruby';
 import { lua } from '@codemirror/legacy-modes/mode/lua';
 import { perl } from '@codemirror/legacy-modes/mode/perl';
+import { powerShell } from '@codemirror/legacy-modes/mode/powershell';
 import { json } from '@codemirror/lang-json';
 import { markdown } from '@codemirror/lang-markdown';
 import { html } from '@codemirror/lang-html';
@@ -45,6 +46,7 @@ const LANG_SHELL = StreamLanguage.define(shell);
 const LANG_RUBY = StreamLanguage.define(ruby);
 const LANG_LUA = StreamLanguage.define(lua);
 const LANG_PERL = StreamLanguage.define(perl);
+const LANG_POWERSHELL = StreamLanguage.define(powerShell);
 
 /**
  * 根据文件扩展名返回对应的 CodeMirror 语言扩展（查表复用单例）。
@@ -119,6 +121,10 @@ export function languageExtensionFor(filename: string): Extension[] {
     case 'pl':
     case 'pm':
       return [LANG_PERL];
+    case 'ps1':
+    case 'psm1':
+    case 'psd1':
+      return [LANG_POWERSHELL];
     default:
       // txt / log / conf / ini / env / toml / sh 等纯文本呈现。
       return [];
