@@ -26,6 +26,7 @@ import { gas } from '@codemirror/legacy-modes/mode/gas';
 import { cmake } from '@codemirror/legacy-modes/mode/cmake';
 import { scheme } from '@codemirror/legacy-modes/mode/scheme';
 import { tcl } from '@codemirror/legacy-modes/mode/tcl';
+import { stex } from '@codemirror/legacy-modes/mode/stex';
 import { kotlin as clikeKotlin, scala as clikeScala, dart as clikeDart } from '@codemirror/legacy-modes/mode/clike';
 import { json } from '@codemirror/lang-json';
 import { markdown } from '@codemirror/lang-markdown';
@@ -90,6 +91,7 @@ const LANG_GAS = StreamLanguage.define(gas);
 const LANG_CMAKE = StreamLanguage.define(cmake);
 const LANG_SCHEME = StreamLanguage.define(scheme);
 const LANG_TCL = StreamLanguage.define(tcl);
+const LANG_STEX = StreamLanguage.define(stex);
 // clike 系（Kotlin/Scala/Dart）使用 clike 模块的预设导出
 const LANG_KOTLIN = StreamLanguage.define(clikeKotlin);
 const LANG_SCALA = StreamLanguage.define(clikeScala);
@@ -124,6 +126,8 @@ export function languageExtensionFor(filename: string): Extension[] {
       return [LANG_HTML];
     case 'xml':
     case 'svg':
+    case 'wxs':
+    case 'wxi':
       return [LANG_XML];
     // 样式
     case 'css':
@@ -248,6 +252,17 @@ export function languageExtensionFor(filename: string): Extension[] {
     case 's':
     case 'asm':
       return [LANG_GAS];
+    // 脚本 / 配置补充
+    case 'bat':
+    case 'cmd':
+      // Windows 批处理：无专用 mode，用 shell 近似（高亮注释/字符串/数字）
+      return [LANG_SHELL];
+    case 'reg':
+      // Windows 注册表导出：格式与 INI/properties 一致
+      return [LANG_PROPERTIES];
+    case 'tex':
+    case 'latex':
+      return [LANG_STEX];
     default:
       // txt / log / conf / ini / env / toml / sh 等纯文本呈现。
       return [];
