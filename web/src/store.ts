@@ -615,6 +615,10 @@ export const useEditorStore = defineStore('editor', () => {
       saveAsVisible.value = true;
       return false;
     }
+    // 防重入：该页签已有写入在途。返回 true（视为已保存/将保存），
+    // 调用方（Ctrl+S / 批量关闭）无需再做任何事。
+    // 并发写同一文件会让 mtime 冲突检测随机 409，误导用户。
+    if (tab.saving) return true;
     try {
       // 快照前记录编辑序号：写入完成后比对是否在等待期间又产生了新编辑。
       // 比全文序列化 O(n) 更轻——O(1) 整数比对即可判断竞态。
@@ -739,13 +743,32 @@ export const useEditorStore = defineStore('editor', () => {
     if (choice === 'cancel') { resolve('cancel'); return; }
     if (choice === 'save') {
       // 逐个保存有路径的脏文件；任一失败（写盘错误）即中止，不动手关。
+      // 注意：模态停留期间某文件可能已在 saving（用户点确认前按过 Ctrl+S），
+      // saveTab 防重入会立即返回 true——但写入还在途，此时关页签会与
+      // rename 竞态。故关闭前等所有 saving 标志清零（写入落盘）。
       for (const t of toSave) {
         const ok = await saveTab(t.id);
         if (!ok) { resolve('cancel'); return; }
       }
+      await waitSavingSettled();
     }
     ids.forEach(removeTabRaw);
     resolve(choice === 'save' ? 'saved' : 'closed');
+  }
+
+  /**
+   * 等待所有页签的 saving 标志清零（最多 10s）。
+   * 用于「保存并关闭」：saveTab 防重入短路返回 true 时，实际写入仍在途，
+   * 必须等 rename 落盘后再删页签，否则关闭动作会与写入竞态。
+   * 超时兜底：10s 后不再等（极端网络/磁盘卡死），页签照常关闭——
+   * 原子写保证文件本身不会损坏，最坏情况是这次写入结果晚一点落盘。
+   */
+  async function waitSavingSettled(): Promise<void> {
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      if (!tabs.value.some(tb => tb.saving)) return;
+      await new Promise(r => setTimeout(r, 50));
+    }
   }
 
   /**
