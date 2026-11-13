@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.6.28
+version=0.6.29
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.6.28: 文件写入改为原子操作（临时文件+rename），防止写入中途崩溃导致文件损坏；保存竞态检测改为 O(1) 编辑序号比对，去掉 10MB 文件保存时的二次全文序列化
+changelog=0.6.29: 安全与质量加固——fetch 加 30s 超时防永久挂起；debug hook 仅开发构建暴露；persistAll 加 200ms 节流合并连续写盘；移除未使用的 MarkdownPreview.vue

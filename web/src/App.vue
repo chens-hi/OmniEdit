@@ -44,7 +44,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.6.28';
+const appVersion = '0.6.29';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -264,8 +264,10 @@ function mountEditor(tab: { id: number; content: string; path: string; name: str
     ],
     doc: tab.content,
   });
-  // debug 钩子：排障/自动化测试用（必须在 new EditorView 之后赋值）
-  (window as unknown as { __omnieditView?: EditorView | null }).__omnieditView = view;
+  // debug 钩子：仅开发构建暴露（生产剥离，避免扩展/注入脚本读取文档内容）
+  if (import.meta.env.DEV) {
+    (window as unknown as { __omnieditView?: EditorView | null }).__omnieditView = view;
+  }
   syncCursor(view.state);
   // 初始化状态栏统计（行数 O(1)；字节数按打开内容一次算好）。
   docStats.value = { lines: view.state.doc.lines, bytes: new Blob([tab.content]).size };

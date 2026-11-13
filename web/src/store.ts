@@ -211,54 +211,54 @@ export const useEditorStore = defineStore('editor', () => {
   /** 补读失败计数：连续 3 次仍失败才允许盲写（见 persistAll）。 */
   let prefsReadFailures = 0;
 
-  /**
-   * writeChain 写盘串行链：偏好久会话都是整体覆盖写，并发 PUT 乱序到达时
-   * 会用旧快照盖掉新快照（例如刚打开文件写入会话，紧接着的设置改动后发先至，
-   * 又把会话抹回空）。串行化保证落盘顺序 = 状态演进顺序。
-   */
-  let writeChain: Promise<void> = Promise.resolve();
+  /** persistAll 节流计时器：连续调用时只保留最后一次，200ms 后真正发请求。 */
+  let persistTimer: number | undefined;
 
   /**
-   * persistAll 把「偏好 + 会话」整体写回后端（fire-and-forget，队列串行）。
+   * persistAll 把「偏好 + 会话」整体写回后端（队列串行 + 200ms 节流合并）。
+   *
+   * 节流：快速连续调用（拖动字号滑块、连续勾选菜单项）只会在最后一次调用
+   * 200ms 后发出一个 PUT，而非每个改动各发一个。snapshot 在 timer 回调时取
+   * （而非调用时），保证写入的是最新状态。
+   *
    * 后端失败静默——编辑器不因偏好存储故障而不可用，下次改动会重试。
    * 返回是否写盘成功（仅 resetToDefaults 需要等待结果，其余调用点忽略）。
    */
   function persistAll(): Promise<boolean> {
     if (restoreGuard) return Promise.resolve(false);
-    const snap = prefsSnapshot();
-    const p = writeChain.then(async (): Promise<boolean> => {
-      // 启动补读失败时的兜底：服务端很可能存着上次的会话，直接覆盖会把它清掉。
-      // 先取回来，本地会话为空（说明确实没恢复出标签）时沿用服务端的。
-      if (!prefsLoaded) {
-        try {
-          const server = await getPrefs();
-          prefsLoaded = true;
-          prefsReadFailures = 0;
-          const localSess = snap[SESSION_KEY] as { tabs?: string[] } | undefined;
-          const serverSess = server[SESSION_KEY] as { tabs?: string[] } | undefined;
-          if (!localSess?.tabs?.length && serverSess?.tabs?.length) {
-            snap[SESSION_KEY] = serverSess;
+    if (persistTimer !== undefined) clearTimeout(persistTimer);
+    return new Promise<boolean>(resolve => {
+      persistTimer = window.setTimeout(async () => {
+        persistTimer = undefined;
+        const snap = prefsSnapshot();
+        // 启动补读失败时的兜底：服务端很可能存着上次的会话，直接覆盖会把它清掉。
+        // 先取回来，本地会话为空（说明确实没恢复出标签）时沿用服务端的。
+        if (!prefsLoaded) {
+          try {
+            const server = await getPrefs();
+            prefsLoaded = true;
+            prefsReadFailures = 0;
+            const localSess = snap[SESSION_KEY] as { tabs?: string[] } | undefined;
+            const serverSess = server[SESSION_KEY] as { tabs?: string[] } | undefined;
+            if (!localSess?.tabs?.length && serverSess?.tabs?.length) {
+              snap[SESSION_KEY] = serverSess;
+            }
+          } catch {
+            // 仍读不到：宁可这次不写，也不拿「空会话」覆盖服务端可能存在的会话。
+            prefsReadFailures += 1;
+            if (prefsReadFailures < 3) return resolve(false);
           }
-        } catch {
-          // 仍读不到：宁可这次不写，也不拿「空会话」覆盖服务端可能存在的会话。
-          // 连续失败 3 次后放行，避免后端长期异常时偏好永远无法保存（此地仍有
-          // 风险，但属于「服务端已不可读」的极端场景，优先保证设置可用）。
-          prefsReadFailures += 1;
-          if (prefsReadFailures < 3) return false;
         }
-      }
-      try {
-        await putPrefs(snap);
-        prefsBackendOk.value = true;
-        return true;
-      } catch {
-        prefsBackendOk.value = false;
-        return false;
-      }
+        try {
+          await putPrefs(snap);
+          prefsBackendOk.value = true;
+          resolve(true);
+        } catch {
+          prefsBackendOk.value = false;
+          resolve(false);
+        }
+      }, 200);
     });
-    // 队列只关心顺序，不传播失败（否则一次失败会阻断后续所有写盘）。
-    writeChain = p.then(() => undefined, () => undefined);
-    return p;
   }
 
   /** persistPrefs 兼容旧调用点：与会话同源写盘（见 prefsSnapshot 注释）。 */

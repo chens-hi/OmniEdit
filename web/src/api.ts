@@ -36,16 +36,30 @@ export class ApiError extends Error {
   }
 }
 
+/** 请求超时（ms）：后端卡住时避免 UI 永远等待。 */
+const REQUEST_TIMEOUT_MS = 30_000;
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...init,
-  });
-  const data = await resp.json().catch(() => ({}));
-  if (!resp.ok || data?.ok === false) {
-    throw new ApiError(data?.error ?? `请求失败（HTTP ${resp.status}）`, resp.status);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const resp = await fetch(url, {
+      headers: { 'Content-Type': 'application/json' },
+      signal: ctrl.signal,
+      ...init,
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || data?.ok === false) {
+      throw new ApiError(data?.error ?? `请求失败（HTTP ${resp.status}）`, resp.status);
+    }
+    return data as T;
+  } catch (e) {
+    if (e instanceof ApiError) throw e;
+    // AbortError → 转成可读消息，不让上层拿到原始 DOMException
+    throw new ApiError('请求超时，请检查网络连接', 0);
+  } finally {
+    clearTimeout(timer);
   }
-  return data as T;
 }
 
 /** 读取文本文件内容。超过打开上限（10MB）后端直接返回 413 错误。 */
