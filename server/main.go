@@ -12,6 +12,7 @@ package main
 import (
 	"context"
 	"flag"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -80,6 +81,14 @@ func main() {
 		log.Fatalf("创建偏好配置目录失败: %v", err)
 	}
 	log.Printf("[prefs] 配置目录: %s", prefsDir)
+
+	// 日志落盘：${prefsDir}/logs/omniedit-YYYY-MM-DD.log
+	// 启动时清理 7 天前旧文件；同时写 stderr（容器 stdout）和文件。
+	logFile := setupLogFile(prefsDir)
+	if logFile != nil {
+		log.SetOutput(io.MultiWriter(os.Stderr, logFile))
+		defer logFile.Close()
+	}
 
 	h := &api.Handler{
 		FileSvc:     fileSvc,
@@ -232,4 +241,46 @@ func logRequests(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 		log.Printf("%s %s", r.Method, r.URL.Path)
 	})
+}
+
+// logMaxAge 日志文件保留天数，超过自动清理。
+const logMaxAge = 7 * 24 * time.Hour
+
+// setupLogFile 在 confDir/logs/ 下创建当天的日志文件（追加模式），
+// 并清理超过 logMaxAge 的旧日志。返回打开的文件（调用方负责 defer Close）；
+// 目录创建或文件打开失败时返回 nil（日志仅输出 stderr，不阻塞启动）。
+func setupLogFile(confDir string) *os.File {
+	logDir := filepath.Join(confDir, "logs")
+	if err := os.MkdirAll(logDir, 0o755); err != nil {
+		log.Printf("[log] 创建日志目录失败: %v", err)
+		return nil
+	}
+
+	// 清理过期日志：遍历目录，删除文件名匹配 omniedit-*.log 且修改时间超限的文件。
+	entries, err := os.ReadDir(logDir)
+	if err == nil {
+		cutoff := time.Now().Add(-logMaxAge)
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".log") {
+				continue
+			}
+			info, err := e.Info()
+			if err != nil || info.ModTime().After(cutoff) {
+				continue
+			}
+			if err := os.Remove(filepath.Join(logDir, e.Name())); err == nil {
+				log.Printf("[log] 清理过期日志: %s", e.Name())
+			}
+		}
+	}
+
+	// 打开当天日志文件（追加模式，不存在则创建）
+	name := "omniedit-" + time.Now().Format("2006-01-02") + ".log"
+	f, err := os.OpenFile(filepath.Join(logDir, name),
+		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		log.Printf("[log] 打开日志文件失败: %v", err)
+		return nil
+	}
+	return f
 }
