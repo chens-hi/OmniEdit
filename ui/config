@@ -20,16 +20,25 @@
       "url": "/app/omniedit",
       "allUsers": true,
       "fileTypes": [
-        "txt", "log", "md", "markdown",
-        "json", "jsonc", "json5", "yml", "yaml", "toml",
-        "ini", "conf", "env", "properties", "editorconfig",
-        "html", "htm", "xml", "svg", "wxs", "css", "scss", "less",
+        "json", "jsonc", "json5",
+        "yml", "yaml", "toml",
+        "ini", "conf", "cfg", "env", "properties",
+        "editorconfig", "gitconfig", "npmrc",
+        "dockerfile", "nginx", "proto", "cmake",
+        "xml", "svg", "wxs",
+        "diff", "patch",
+
         "js", "mjs", "cjs", "ts", "jsx", "tsx",
-        "py", "go", "java", "c", "h", "cpp", "hpp", "cs", "rs", "php",
-        "rb", "lua", "pl", "sh", "bash", "zsh", "ps1", "psm1",
-        "sql", "swift", "kt", "kts", "dart", "groovy",
-        "r",
-        "bat", "cmd", "dockerfile", "cmake", "diff", "patch"
+        "py", "go", "java", "cs", "rs", "php", "rb",
+        "c", "h", "cpp", "hpp",
+        "sh", "bash", "zsh", "ps1", "bat", "cmd",
+        "sql", "lua",
+
+        "md", "markdown",
+        "html", "htm",
+        "css", "scss", "less",
+        "txt", "log",
+        "swift", "kt", "dart"
       ],
       "noDisplay": true
     }
