@@ -82,9 +82,13 @@ func main() {
 	}
 	log.Printf("[prefs] 配置目录: %s", prefsDir)
 
-	// 日志落盘：${prefsDir}/logs/omniedit-YYYY-MM-DD.log
-	// 启动时清理 7 天前旧文件；同时写 stderr（容器 stdout）和文件。
-	logFile := setupLogFile(prefsDir)
+	// 日志落盘：优先 ${TRIM_APPDATA}/logs/（用户文件管理器可见），
+	// 无 TRIM_APPDATA 时回退 ${prefsDir}/logs/（conf 目录内）。
+	logBase := os.Getenv("TRIM_APPDATA")
+	if logBase == "" {
+		logBase = prefsDir
+	}
+	logFile := setupLogFile(logBase)
 	if logFile != nil {
 		log.SetOutput(io.MultiWriter(os.Stderr, logFile))
 		defer logFile.Close()
@@ -246,11 +250,11 @@ func logRequests(next http.Handler) http.Handler {
 // logMaxAge 日志文件保留天数，超过自动清理。
 const logMaxAge = 7 * 24 * time.Hour
 
-// setupLogFile 在 confDir/logs/ 下创建当天的日志文件（追加模式），
+// setupLogFile 在 logBase/logs/ 下创建当天的日志文件（追加模式），
 // 并清理超过 logMaxAge 的旧日志。返回打开的文件（调用方负责 defer Close）；
 // 目录创建或文件打开失败时返回 nil（日志仅输出 stderr，不阻塞启动）。
-func setupLogFile(confDir string) *os.File {
-	logDir := filepath.Join(confDir, "logs")
+func setupLogFile(logBase string) *os.File {
+	logDir := filepath.Join(logBase, "logs")
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
 		log.Printf("[log] 创建日志目录失败: %v", err)
 		return nil

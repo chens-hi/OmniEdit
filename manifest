@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.6.30
+version=0.6.31
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.6.30: 日志落盘——每日一个日志文件（logs/omniedit-YYYY-MM-DD.log），自动清理 7 天前旧文件；同时输出 stderr 便于容器排查
+changelog=0.6.31: 日志目录改为 /vol1/@appdata/omniedit/logs/（文件管理器可见），无 TRIM_APPDATA 时回退配置目录
