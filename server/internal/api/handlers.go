@@ -4,9 +4,11 @@
 //
 //	GET  /api/health          健康检查
 //	GET  /api/ws              WebSocket：文件变更推送（事件路由用）
-//	GET  /api/file/read       读取文本文件（?path=...）
+//	GET  /api/file/read       读取文本文件（?path=...）——JSON 信封
+//	GET  /api/file/read-raw   读取文本文件——纯文本响应（大文件性能通道）
 //	GET  /api/file/raw        二进制原样输出（?path=...，HTML/MD 预览的相对资源用）
-//	POST /api/file/write      保存文本文件（不存在则创建，支持另存为）
+//	POST /api/file/write      保存文本文件（JSON 信封）
+//	POST /api/file/write-raw  保存文本文件——请求体即原文（大文件性能通道）
 //	POST /api/file/unwatch    关闭标签时释放文件监控
 //
 // 权限模型（对齐同类 fnOS 编辑器，如万能编辑器；真机决策）：
@@ -20,8 +22,11 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -210,6 +215,132 @@ func (h *Handler) WriteFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "mtime": newMTime})
+}
+
+// ReadRaw GET /api/file/read-raw?path=...
+// raw 打开通道：返回**解码后的 UTF-8 文本**（Content-Type: text/plain; charset=utf-8），
+// 无 JSON 信封。与 /api/file/read 完全同一套内容判定（files.Read）：
+// 大小 → UTF-16 → 二进制 → 编码解码，任一失败同样返回 413/415/404。
+//
+// 响应头 X-File-Meta: base64(JSON{size,mtime,encoding,lineEnding,hasBom,writable})，
+// 元数据与正文分离传输，前端读完正文后读取响应头还原元数据，
+// 避免为元数据再发一次请求。
+//
+// 性能：省去 Go json.Marshal 的字符串转义 + 前端 resp.json() 解析，
+// 10MB 文件的打开路径少两次 O(n) 编解码。
+func (h *Handler) ReadRaw(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requireGatewayUser(r); !ok {
+		errJSON(w, http.StatusUnauthorized, "未授权：缺少网关用户身份")
+		return
+	}
+	rawPath := r.URL.Query().Get("path")
+	absPath, err := files.CleanAndValidate(rawPath)
+	if err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.devRootGuard(absPath); err != nil {
+		errJSON(w, http.StatusForbidden, err.Error())
+		return
+	}
+
+	meta, err := files.Read(absPath)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if err == files.ErrNotFound {
+			status = http.StatusNotFound
+		} else if errors.Is(err, files.ErrFileTooLarge{}) {
+			status = http.StatusRequestEntityTooLarge
+		} else if errors.Is(err, files.ErrBinary{}) || errors.Is(err, files.ErrNotUTF8{}) ||
+			errors.Is(err, files.ErrUnsupportedEncoding{}) {
+			status = http.StatusUnsupportedMediaType
+		}
+		errJSON(w, status, err.Error())
+		return
+	}
+
+	metaJSON, _ := json.Marshal(map[string]any{
+		"size":       meta.Size,
+		"mtime":      meta.ModTime,
+		"encoding":   meta.Encoding,
+		"lineEnding": meta.LineEnding,
+		"hasBom":     meta.Encoding == "utf-8-bom",
+		"writable":   meta.Writable,
+	})
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-File-Meta", base64.StdEncoding.EncodeToString(metaJSON))
+	w.Header().Set("X-Content-Bytes", fmt.Sprint(len(meta.Content)))
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(meta.Content))
+}
+
+// WriteRaw POST /api/file/write-raw?path=...&mtime=...&bom=1&enc=gb18030
+// raw 保存通道：请求体即文件内容原文（text/plain），无 JSON 信封。
+// 内容判定与写入逻辑与 /api/file/write 完全一致（files.WriteRaw）：
+// mtime 冲突检测 → UTF-8 校验 → 编码转回 → 原子写，任一失败同样返回 409/415/500。
+//
+// 响应头 X-New-Mtime: 写入后的新 mtime（RFC3339Nano），供前端更新冲突检测基线。
+//
+// 性能：省去前端 JSON.stringify + 后端 json.Decode 的字符串转义/还原，
+// 10MB 文件的保存路径少两次 O(n) 编解码。
+func (h *Handler) WriteRaw(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.requireGatewayUser(r)
+	if !ok {
+		errJSON(w, http.StatusUnauthorized, "未授权：缺少网关用户身份")
+		return
+	}
+
+	q := r.URL.Query()
+	absPath, err := files.CleanAndValidate(q.Get("path"))
+	if err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.devRootGuard(absPath); err != nil {
+		errJSON(w, http.StatusForbidden, err.Error())
+		return
+	}
+
+	content, err := io.ReadAll(io.LimitReader(r.Body, files.MaxOpenBytes+1))
+	if err != nil {
+		errJSON(w, http.StatusBadRequest, "读取请求体失败")
+		return
+	}
+	// 超过上限 +1 字节即说明内容超限（read-raw 侧 MaxOpenBytes 同样拦截）。
+	if int64(len(content)) > files.MaxOpenBytes {
+		errJSON(w, http.StatusRequestEntityTooLarge, "文件过大")
+		return
+	}
+
+	newMTime, err := files.WriteRaw(files.WriteRawRequest{
+		Path:      absPath,
+		Content:   string(content),
+		BaseMTime: q.Get("mtime"),
+		HasBOM:    q.Get("bom") == "1",
+		Encoding:  q.Get("enc"),
+	})
+	if err != nil {
+		status := http.StatusInternalServerError
+		switch err {
+		case files.ErrConflict:
+			status = http.StatusConflict
+		case files.ErrNotFound:
+			status = http.StatusNotFound
+		}
+		errJSON(w, status, err.Error())
+		return
+	}
+	_ = user // 仅用于 WS 路由；写权限不做用户级检查（见包注释）
+
+	// 保存后以新 mtime 重设 watcher 基线（同 WriteFile，防自写回声误报）。
+	if h.Hub != nil {
+		h.Hub.Watch(absPath, user.UID)
+	}
+
+	w.Header().Set("X-New-Mtime", newMTime)
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
 }
 
 // Unwatch POST /api/file/unwatch

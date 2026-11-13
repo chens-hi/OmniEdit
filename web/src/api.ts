@@ -67,6 +67,131 @@ export function readFile(path: string): Promise<{ file: FileMeta }> {
   return request(`${BASE}/api/file/read?path=${encodeURIComponent(path)}`);
 }
 
+/** raw 读取通道的元数据（从 X-File-Meta 响应头 base64 还原）。 */
+interface RawMeta {
+  size: number;
+  mtime: string;
+  encoding: string;
+  lineEnding: string;
+  hasBom: boolean;
+  writable: boolean;
+}
+
+/**
+ * raw 打开通道：GET /api/file/read-raw 返回纯文本正文，
+ * 元数据在 X-File-Meta 响应头（base64 JSON）。
+ *
+ * 与 readFile 的区别：跳过 Go json.Marshal 的字符串转义与前端
+ * resp.json() 解析，10MB 文件少两次 O(n) 编解码（打开路径约省 200ms）。
+ * 内容判定完全一致（同一个 files.Read）：二进制/UTF-16/超大文件同样拒绝。
+ *
+ * 完整性校验：比对响应头 X-Content-Length 与实际读取字符数，
+ * 不一致说明传输被截断，抛错而不建页签（防静默数据损坏）。
+ */
+export async function readFileRaw(path: string): Promise<{ file: FileMeta }> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  let resp: Response;
+  try {
+    resp = await fetch(`${BASE}/api/file/read-raw?path=${encodeURIComponent(path)}`, {
+      signal: ctrl.signal,
+    });
+  } catch (e) {
+    clearTimeout(timer);
+    throw new ApiError('请求超时，请检查网络连接', 0);
+  }
+  clearTimeout(timer);
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new ApiError(err?.error ?? `请求失败（HTTP ${resp.status}）`, resp.status);
+  }
+
+  const text = await resp.text();
+
+  // 完整性校验：后端在 X-Content-Length 写入字符数（UTF-16 code unit 数）。
+  // Go 侧 w.Write([]byte(content)) 的字节数是 UTF-8 字节数，与 JS string 的
+  // length（UTF-16 code unit）不同——中文字符 3 字节 vs 1 code unit。
+  // 因此这里让后端直接回传 UTF-8 字节数，前端用 TextEncoder 编码后比对。
+  const declared = resp.headers.get('X-Content-Bytes');
+  if (declared !== null) {
+    const actual = new TextEncoder().encode(text).length;
+    if (Number(declared) !== actual) {
+      throw new ApiError(`传输不完整（期望 ${declared} 字节，实际 ${actual} 字节）`, 0);
+    }
+  }
+
+  // 还原元数据
+  const metaB64 = resp.headers.get('X-File-Meta') ?? '';
+  let meta: RawMeta = { size: 0, mtime: '', encoding: 'utf-8', lineEnding: '', hasBom: false, writable: true };
+  if (metaB64) {
+    try {
+      const bin = atob(metaB64);
+      const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+      meta = JSON.parse(new TextDecoder().decode(bytes));
+    } catch {
+      // 元数据解析失败不致命：按默认值继续（正文已完整）。
+    }
+  }
+
+  return {
+    file: {
+      path,
+      content: text,
+      size: meta.size,
+      mtime: meta.mtime,
+      writable: meta.writable,
+      encoding: meta.encoding,
+      lineEnding: meta.lineEnding,
+    },
+  };
+}
+
+/**
+ * raw 保存通道：POST /api/file/write-raw，请求体即文件内容原文。
+ * mtime 冲突检测 / BOM 保持 / GB18030 转回 / 原子写全部与 writeFile 一致
+ * （同一个 files.WriteRaw）。新 mtime 从 X-New-Mtime 响应头取。
+ *
+ * 与 writeFile 的区别：跳过前端 JSON.stringify + 后端 json.Decode 的
+ * 字符串转义/还原，10MB 文件保存路径少两次 O(n) 编解码（约省 200ms）。
+ */
+export async function writeFileRaw(
+  path: string,
+  content: string,
+  baseMtime?: string,
+  hasBom?: boolean,
+  encoding?: string,
+): Promise<{ mtime: string }> {
+  const q = new URLSearchParams({ path });
+  if (baseMtime) q.set('mtime', baseMtime);
+  if (hasBom) q.set('bom', '1');
+  if (encoding && encoding !== 'utf-8' && encoding !== 'utf-8-bom') q.set('enc', encoding);
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  let resp: Response;
+  try {
+    resp = await fetch(`${BASE}/api/file/write-raw?${q.toString()}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      body: content,
+      signal: ctrl.signal,
+    });
+  } catch (e) {
+    clearTimeout(timer);
+    throw new ApiError('请求超时，请检查网络连接', 0);
+  }
+  clearTimeout(timer);
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new ApiError(err?.error ?? `请求失败（HTTP ${resp.status}）`, resp.status);
+  }
+  const mtime = resp.headers.get('X-New-Mtime');
+  if (!mtime) throw new ApiError('保存响应缺少 mtime', 0);
+  return { mtime };
+}
+
 /**
  * 保存文本文件内容（携带 baseMtime 做冲突检测；baseMtime 为空且文件
  * 不存在时后端创建新文件——「另存为」。hasBom/encoding 保持原文件

@@ -466,14 +466,37 @@ type WriteRequest struct {
 	Encoding string `json:"encoding,omitempty"`
 }
 
+// WriteRawRequest 是 raw 保存通道（write-raw）的参数。
+// 与 WriteRequest 字段一致，但内容来自请求体原文（非 JSON 字段），
+// 参数由 API 层从 query 解析后填充。
+type WriteRawRequest struct {
+	Path      string
+	Content   string
+	BaseMTime string
+	HasBOM    bool
+	Encoding  string
+}
+
 // Write 写入文件：目标不存在时创建（「另存为」场景），存在时带 mtime 冲突检测。
 //
 // 安全边界由调用方（API 层）负责：授权目录 + symlink 校验、用户写 ACL。
 // 创建使用 0644；冲突检测仅对已存在文件生效（新文件无从冲突）。
 func Write(req WriteRequest) (newMTime string, err error) {
+	return writeParts(req.Path, req.Content, req.BaseMTime, req.HasBOM, req.Encoding)
+}
+
+// WriteRaw 是 raw 保存通道的入口：参数从 HTTP query/请求体解析而来，
+// 写入逻辑与 Write 完全一致（冲突检测 / UTF-8 校验 / 原子写），
+// 仅省去 JSON 信封的编码解码开销。
+func WriteRaw(req WriteRawRequest) (newMTime string, err error) {
+	return writeParts(req.Path, req.Content, req.BaseMTime, req.HasBOM, req.Encoding)
+}
+
+// writeParts 是 Write/WriteRaw 的共用实现，参数平铺便于两种通道复用。
+func writeParts(path, content, baseMTime string, hasBOM bool, encoding string) (newMTime string, err error) {
 	mode := os.FileMode(0o644)
 	creating := false
-	info, err := os.Stat(req.Path)
+	info, err := os.Stat(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return "", err
@@ -481,42 +504,42 @@ func Write(req WriteRequest) (newMTime string, err error) {
 		creating = true
 	} else {
 		if info.IsDir() {
-			return "", fmt.Errorf("目标是目录而非文件: %s", req.Path)
+			return "", fmt.Errorf("目标是目录而非文件: %s", path)
 		}
 		mode = info.Mode().Perm()
 		// 冲突检测：若客户端携带 baseMtime 且与服务端当前 mtime 不一致，则拒绝写入。
-		if req.BaseMTime != "" {
+		if baseMTime != "" {
 			current := info.ModTime().Format(time.RFC3339Nano)
-			if current != req.BaseMTime {
+			if current != baseMTime {
 				return "", ErrConflict
 			}
 		}
 	}
 
 	// 编码与校验：内容必须为合法 UTF-8（前端不做转码，此处是最后防线）。
-	if !utf8.ValidString(req.Content) {
-		return "", fmt.Errorf("保存内容含非法 UTF-8 序列，已拒绝写入: %s", req.Path)
+	if !utf8.ValidString(content) {
+		return "", fmt.Errorf("保存内容含非法 UTF-8 序列，已拒绝写入: %s", path)
 	}
 	// 目标编码写盘：gb18030 文件转回 ANSI 编码（保持 NAS 上的原编码不变）；
 	// UTF-8 文件按 BOM 原则「不加不删」。
 	var out []byte
-	switch req.Encoding {
+	switch encoding {
 	case "gb18030":
-		encoded, err := encodeGB18030(req.Content)
+		encoded, err := encodeGB18030(content)
 		if err != nil {
 			return "", fmt.Errorf("转回 GB18030 编码失败: %w", err)
 		}
 		out = encoded
 	default:
-		out = []byte(req.Content)
-		if req.HasBOM {
+		out = []byte(content)
+		if hasBOM {
 			out = append(utf8BOM, out...)
 		}
 	}
 
 	// 原子写：统一走临时文件 + rename，确保写入中途崩溃不会留下半截损坏文件。
 	// 与 prefs.go 的原子写策略一致。临时文件建在同目录（rename 同文件系统内原子）。
-	tmp, err := os.CreateTemp(filepath.Dir(req.Path), ".omniedit-tmp-*")
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".omniedit-tmp-*")
 	if err != nil {
 		return "", fmt.Errorf("创建临时文件失败: %w", err)
 	}
@@ -542,11 +565,11 @@ func Write(req WriteRequest) (newMTime string, err error) {
 			return "", err
 		}
 	}
-	if err := os.Rename(tmpName, req.Path); err != nil {
+	if err := os.Rename(tmpName, path); err != nil {
 		os.Remove(tmpName)
 		return "", fmt.Errorf("原子替换失败: %w", err)
 	}
-	newInfo, err := os.Stat(req.Path)
+	newInfo, err := os.Stat(path)
 	if err != nil {
 		return "", err
 	}

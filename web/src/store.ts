@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { readFile, writeFile, unwatchFile, getPrefs, putPrefs, type FileMeta } from './api';
+import { readFileRaw, writeFileRaw, unwatchFile, getPrefs, putPrefs, type FileMeta } from './api';
 import { sdk } from './api';
 import { t } from './i18n';
 import { BUILTIN_FONTS, DEFAULT_FONT_ID, applyEditorFont } from './fonts';
@@ -428,7 +428,7 @@ export const useEditorStore = defineStore('editor', () => {
    */
   async function fillTab(tab: Tab, silent = false): Promise<boolean> {
     try {
-      const { file } = await readFile(tab.path);
+      const { file } = await readFileRaw(tab.path);
       applyFile(tab, file);
       return true;
     } catch (e) {
@@ -509,7 +509,7 @@ export const useEditorStore = defineStore('editor', () => {
     // 不会传内容，所以这里几乎立即返回，界面不会长时间无反馈。
     let file: FileMeta;
     try {
-      ({ file } = await readFile(path));
+      ({ file } = await readFileRaw(path));
     } catch (e) {
       reportOpenError(e);
       return;
@@ -621,7 +621,7 @@ export const useEditorStore = defineStore('editor', () => {
       const seqBefore = tab.editSeq ?? 0;
       const content = getTabContent(id);
       tab.saving = true;
-      const { mtime } = await writeFile(tab.path, content, tab.mtime, tab.hasBom, tab.encoding);
+      const { mtime } = await writeFileRaw(tab.path, content, tab.mtime, tab.hasBom, tab.encoding);
       tab.mtime = mtime;
       // 仅当等待期间没有新编辑时才清除 dirty：
       // 若用户在写入等待期间又打了字（editSeq 变化），那些编辑不在本次写入里，
@@ -645,7 +645,7 @@ export const useEditorStore = defineStore('editor', () => {
     saveAsVisible.value = false;
     try {
       const content = getTabContent(tab.id);
-      const { mtime } = await writeFile(target, content, '', tab.hasBom, tab.encoding);
+      const { mtime } = await writeFileRaw(target, content, '', tab.hasBom, tab.encoding);
       lastSaveDir.value = target.replace(/[\\/][^\\/]+$/, '');
       // tab 来自 activeTab computed（响应式代理），赋值安全。
       tab.path = target;
@@ -766,7 +766,7 @@ export const useEditorStore = defineStore('editor', () => {
     const tab = tabs.value.find(tb => tb.path === path);
     if (!tab) return false;
     try {
-      const { file } = await readFile(path);
+      const { file } = await readFileRaw(path);
       tab.content = file.content;
       tab.mtime = file.mtime;
       tab.dirty = false;
@@ -1049,4 +1049,5 @@ function isMd(path: string): boolean {
 }
 
 export type { FileMeta };
+
 
