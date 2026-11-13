@@ -44,7 +44,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.6.51';
+const appVersion = '0.6.52';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -340,7 +340,9 @@ watch(
       mountEditor(tab);
       return;
     }
-    if (view.state.doc.toString() !== content) {
+    // 长度预判：不同必是外部修改（免两次 O(n)——toString + 全文比较）。
+    // 长度相同仍需比对（内容可能不同），但这只在外部重载时发生，频率极低。
+    if (view.state.doc.length !== content.length || view.state.doc.toString() !== content) {
       // 外部变更重载：整体替换文档内容，保留滚动位置。
       // 带 docSync 标记 → updateListener 不计为用户编辑（不点黄点）。
       const curScroll = view.scrollDOM.scrollTop;

@@ -71,19 +71,36 @@ let untitledSeq = 0;
  *   - spaces/mixed → 空格计数的**最小值**即缩进单元（2/4 空格文件的 min 就是
  *     单元；对齐用空格不会小于真单元），clamp 1..8，无样本时 4；
  *   - tabs → 渲染宽度按 CodeMirror 默认 tabSize=4 展示（内容检测不出渲染宽度）。
+ *
+ * 性能：**只采样前 1000 行**。缩进风格在文件内高度一致（同一作者一次写成），
+ * 采样足够判定；而旧实现 `content.split('\n')` 对 10MB 文件会产生 13 万个
+ * 字符串对象（~3MB 额外内存）且耗时 ~100ms——全在打开路径上。
  */
 function detectIndent(content: string): { style: 'spaces' | 'tabs' | 'mixed'; width: number } {
+  const SAMPLE_LINES = 1000;
   let tabs = 0;
   let spaces = 0;
   let minSpaceUnit = Number.MAX_SAFE_INTEGER;
-  for (const line of content.split('\n')) {
-    if (!line.length) continue;
-    if (line[0] === '\t') { tabs++; continue; }
-    let sp = 0;
-    while (sp < line.length && line[sp] === ' ') sp++;
-    if (sp >= 2) {
-      spaces++;
-      if (sp < minSpaceUnit) minSpaceUnit = sp;
+  let lineStart = 0;
+  let lineNo = 0;
+  for (let i = 0; i <= content.length && lineNo < SAMPLE_LINES; i++) {
+    // 到达行尾（或文末）：处理当前行
+    if (i === content.length || content.charCodeAt(i) === 10 /* \n */) {
+      const len = i - lineStart;
+      if (len > 0) {
+        if (content.charCodeAt(lineStart) === 9 /* \t */) {
+          tabs++;
+        } else {
+          let sp = 0;
+          while (sp < len && content.charCodeAt(lineStart + sp) === 32) sp++;
+          if (sp >= 2) {
+            spaces++;
+            if (sp < minSpaceUnit) minSpaceUnit = sp;
+          }
+        }
+      }
+      lineNo++;
+      lineStart = i + 1;
     }
   }
   if (tabs === 0 && spaces === 0) return { style: 'spaces', width: 4 };
