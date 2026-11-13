@@ -5,7 +5,7 @@ import { sdk } from './api';
 import { t } from './i18n';
 import { BUILTIN_FONTS, DEFAULT_FONT_ID, applyEditorFont } from './fonts';
 import { setThemeOverride, type ThemeMode } from './theme';
-import { SUPPORTED_EXTENSIONS } from './language';
+import { SUPPORTED_EXTENSIONS, BINARY_EXTENSIONS } from './language';
 
 // ---- 编辑器设置（菜单栏驱动；后端 prefs 唯一持久化源，无 localStorage 兜底） ----
 
@@ -477,10 +477,17 @@ export const useEditorStore = defineStore('editor', () => {
    * 标签栏完全不受影响。
    */
   async function openFile(path: string) {
-    // 扩展名校验：不在支持列表内的文件直接提示，不进入后续流程。
+    // 格式校验：分三种情况给出针对性提示，不进入后续流程。
+    //   1) 已知二进制格式 → 明确说明「不支持编辑此类文件」
+    //   2) 未知/不在支持列表 → 说明「不支持的文件格式」
+    //   3) 支持 → 继续（大文件由后端 Stat 后拒绝，见 reportOpenError）
     const ext = path.split('.').pop()?.toLowerCase() ?? '';
+    if (BINARY_EXTENSIONS.has(ext)) {
+      toast(t('binaryNotSupported', { ext }), 'error', 5000);
+      return;
+    }
     if (!SUPPORTED_EXTENSIONS.has(ext)) {
-      toast(t('unsupportedFormat'), 'error', 4500);
+      toast(t('unsupportedFormat', { ext: ext || '无扩展名' }), 'error', 5000);
       return;
     }
     const existing = tabs.value.find(tb => tb.path === path);

@@ -313,68 +313,64 @@ export function previewKind(filename: string): 'markdown' | 'html' | null {
 export const PREVIEW_MAX_BYTES = 1 << 20;
 
 /**
- * 所有支持打开的文件扩展名（小写，不含点）。
- * 与 languageExtensionFor 的 switch case 保持同步——
- * 新增语言时在此补一行，两处由 code review 保证一致。
+ * 可打开/可编辑的文件扩展名（小写，不含点）——这是**能力全集**。
  *
- * 用途：
- *   1. ui/config fileTypes 注册（fnOS 文件管理器右键菜单）
- *   2. openFile 时校验扩展名，不支持则提示
+ * 与 ui/config 的 fileTypes（注册列表）是**两个独立概念**：
+ *   - REGISTERED_EXTENSIONS：给飞牛看的，决定文件管理器右键菜单是否出现
+ *     OmniEdit。飞牛对数量有未公开上限（实测 93 个会失败），所以必须精简。
+ *   - SUPPORTED_EXTENSIONS（本变量）：给自己看的，决定应用内哪些文件能打开。
+ *     不受平台限制，应当覆盖全部有语法高亮的格式。
+ *
+ * 两者关系：REGISTERED ⊂ SUPPORTED。注册少只意味着「右键菜单不显示」，
+ * 用户仍可通过应用内「打开」菜单输入路径打开任意受支持的格式。
+ *
+ * 与 languageExtensionFor 的 switch case 保持同步——新增语言时两处都要补。
  */
 export const SUPPORTED_EXTENSIONS: ReadonlySet<string> = new Set([
-  // 文本
-  'txt', 'log',
-  // 数据 / 配置
+  // ---- 配置 / 数据 ----
   'json', 'jsonc', 'json5', 'webmanifest',
-  'yml', 'yaml',
-  'toml',
-  'ini', 'cfg', 'properties', 'env',
+  'yml', 'yaml', 'toml',
+  'ini', 'cfg', 'conf', 'env', 'properties',
   'editorconfig', 'gitconfig', 'npmrc', 'yarnrc',
-  'conf', 'nginx',
-  'proto',
-  // 标记
-  'md', 'markdown',
-  'html', 'htm',
+  'dockerfile', 'nginx', 'proto', 'cmake', 'cmakelists',
   'xml', 'svg', 'wxs', 'wxi',
-  // 样式
-  'css', 'scss', 'less',
-  // 脚本 / 编程
-  'js', 'mjs', 'cjs',
-  'ts',
-  'jsx', 'tsx',
-  'py',
-  'go',
-  'java',
-  'rs',
-  'php',
-  'c', 'h', 'cpp', 'hpp', 'cc',
-  'cs',
-  'sql',
-  'sh', 'bash', 'zsh',
-  'rb',
-  'lua',
-  'pl', 'pm',
-  'ps1', 'psm1', 'psd1',
-  'swift',
-  'kt', 'kts',
-  'dart',
-  'scala',
-  'groovy', 'gvy',
-  'clj', 'cljs', 'edn',
-  'hs', 'lhs',
-  'erl', 'hrl',
-  'jl',
-  'r',
-  'scm', 'ss',
-  'tcl',
-  'coffee',
-  'vb',
-  'vbs',
-  'pas', 'dpr',
-  's', 'asm',
-  'cmake', 'cmakelists',
   'diff', 'patch',
-  'tex', 'latex',
-  'bat', 'cmd',
-  'reg',
+  'service', 'timer', 'socket', 'desktop',
+  // ---- 标记 / 文档 / 样式 ----
+  'md', 'markdown', 'html', 'htm',
+  'css', 'scss', 'less',
+  'txt', 'log',
+  // ---- 主流编程语言 ----
+  'js', 'mjs', 'cjs', 'ts', 'jsx', 'tsx',
+  'py', 'go', 'java', 'cs', 'rs', 'php', 'rb',
+  'c', 'h', 'cpp', 'hpp', 'cc',
+  'sh', 'bash', 'zsh', 'ps1', 'psm1', 'psd1', 'bat', 'cmd',
+  'sql', 'lua', 'pl', 'pm',
+  'swift', 'kt', 'kts', 'dart', 'scala', 'groovy', 'gvy',
+  // ---- 其他已支持高亮的语言 ----
+  'r', 'jl', 'hs', 'lhs', 'erl', 'hrl',
+  'clj', 'cljs', 'edn', 'coffee',
+  'vb', 'vbs', 'pas', 'dpr',
+  's', 'asm', 'tcl', 'scm', 'ss',
+  'tex', 'latex', 'reg',
+]);
+
+/**
+ * 显式标记为「不适合编辑」的二进制/容器格式：直接拒绝，避免当文本读出乱码。
+ * 这些不在 SUPPORTED_EXTENSIONS 里，此处单列是为了给出更准确的提示文案，
+ * 而不是笼统的「不支持的格式」。
+ */
+export const BINARY_EXTENSIONS: ReadonlySet<string> = new Set([
+  // Office / 文档容器
+  'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'odt', 'ods', 'odp', 'pdf',
+  // 压缩包
+  'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz',
+  // 图片
+  'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'ico', 'tiff', 'psd',
+  // 音视频
+  'mp3', 'mp4', 'avi', 'mkv', 'mov', 'wav', 'flac', 'webm',
+  // 可执行 / 库
+  'exe', 'dll', 'so', 'dylib', 'bin', 'iso', 'dmg', 'msi', 'deb', 'rpm',
+  // 其他
+  'class', 'jar', 'war', 'pyc', 'o', 'a', 'obj', 'ttf', 'otf', 'woff', 'woff2',
 ]);
