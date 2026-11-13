@@ -106,6 +106,8 @@ export interface Tab {
   content: string;
   mtime: string;       // 服务端 mtime，用于冲突检测；草稿为空
   dirty: boolean;
+  /** 保存中（writeFile 请求在途）：页签显示脉冲指示，完成后自动消失。 */
+  saving: boolean;
   isMarkdown: boolean;
   /** 预览渲染类型（md/htm/html 有预览，其它 null）；打开/另存时按文件名设置。 */
   previewKind: 'markdown' | 'html' | null;
@@ -366,7 +368,7 @@ export const useEditorStore = defineStore('editor', () => {
       path: '',
       name: `${t('untitled')}${untitledSeq > 1 ? ` (${untitledSeq})` : ''}`,
       content: '', mtime: '',
-      dirty: false, isMarkdown: false, previewKind: null, loading: false, readonly: false,
+      dirty: false, saving: false, isMarkdown: false, previewKind: null, loading: false, readonly: false,
       hasBom: false,
       encoding: 'utf-8',
       lineEnding: '',
@@ -390,7 +392,7 @@ export const useEditorStore = defineStore('editor', () => {
     if (existing) return existing;
     const draft: Tab = {
       id: ++tabSeq, path, name: fileNameOf(path), content: '', mtime: '',
-      dirty: false, isMarkdown: isMd(path), previewKind: previewKindOf(path), loading: true, readonly: false,
+      dirty: false, saving: false, isMarkdown: isMd(path), previewKind: previewKindOf(path), loading: true, readonly: false,
       hasBom: false,
       encoding: 'utf-8',
       lineEnding: '',
@@ -593,15 +595,20 @@ export const useEditorStore = defineStore('editor', () => {
     }
     try {
       const content = getTabContent(id);
+      tab.saving = true;
       const { mtime } = await writeFile(tab.path, content, tab.mtime, tab.hasBom, tab.encoding);
       tab.mtime = mtime;
-      tab.dirty = false;
-      // 成功不提示：页签黄点消失本身就是「已保存」的反馈，再弹 toast 是噪音。
-      // （保存失败仍要提示——那是用户必须知道的异常。）
+      // 保存等待期间用户可能又输入了内容——那些编辑不在本次写入里。
+      // 不能无条件 dirty=false，否则那些新编辑看起来像是已保存了。
+      // 比对当前编辑器全文与刚写入的内容，不一致则保持 dirty=true。
+      const current = getTabContent(id);
+      tab.dirty = current !== content;
       return true;
     } catch (e) {
       setError(`${t('saveFailed')}：${(e as Error).message}`);
       return false;
+    } finally {
+      tab.saving = false;
     }
   }
 

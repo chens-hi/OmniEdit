@@ -305,6 +305,29 @@ body,
   .tab-loading { animation-duration: 2.4s; }
 }
 
+/* 标签保存中：名称旁的小转圈 + 左缘竖条脉冲闪烁，双重视觉反馈 */
+.tab-saving {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 1.5px solid var(--fg-muted);
+  border-top-color: transparent;
+  animation: tab-spin 0.8s linear infinite;
+}
+/* 保存中竖条：蓝→透明→蓝循环脉冲，明确区别于静态黄条 */
+.tab-bar-saving {
+  animation: tab-bar-pulse 1s ease-in-out infinite;
+}
+@keyframes tab-bar-pulse {
+  0%, 100% { opacity: 1; background: var(--accent); }
+  50%      { opacity: 0.3; background: var(--accent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab-saving { animation-duration: 2.4s; }
+  .tab-bar-saving { animation-duration: 2.4s; }
+}
+
 /* ---------- 预览 ---------- */
 /* 预览态：填满整个编辑区（editor-pane 已 v-show 隐藏），非分栏 */
 .preview-full {

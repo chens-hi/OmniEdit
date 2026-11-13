@@ -1,5 +1,5 @@
 appname=omniedit
-version=0.6.22
+version=0.6.23
 display_name=OmniEdit
 desc=飞牛原生全格式文件编辑器 / A native all-format file editor for fnOS.
 source=thirdparty
@@ -12,4 +12,4 @@ desktop_uidir=ui
 desktop_applaunchname=omniedit.main
 ctl_stop=true
 checkport=false
-changelog=0.6.22: 新增 PowerShell（.ps1/.psm1/.psd1）语法高亮
+changelog=0.6.23: 保存时页签显示转圈+竖条脉冲指示（大文件保存不再无反馈）；修复保存期间继续输入后黄点错误消失的问题

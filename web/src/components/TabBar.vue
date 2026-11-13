@@ -443,8 +443,14 @@ watch(() => [store.activeId, store.tabs.length], async () => {
           @contextmenu.prevent="onTabContextmenu($event, tab.id)"
         >
           <!-- 状态竖条：贴左缘绝对定位，不占 flex 横向空间 -->
+          <!-- 保存中：竖条脉冲动画，替代静态状态色 -->
           <span
-            v-if="tabStatus(tab).count"
+            v-if="tab.saving"
+            class="tab-bar tab-bar-saving"
+            title="保存中"
+          />
+          <span
+            v-else-if="tabStatus(tab).count"
             class="tab-bar"
             :style="tabStatus(tab).style"
             :title="tabStatus(tab).title"
@@ -452,6 +458,8 @@ watch(() => [store.activeId, store.tabs.length], async () => {
           <span class="tab-name">{{ tab.name }}</span>
           <!-- 加载中：名字旁转圈（内容未就绪），优先级高于状态竖条 -->
           <span v-if="tab.loading" class="tab-loading" :title="t('loading')" />
+          <!-- 保存中：名字右侧显示小转圈，提示写入进行中 -->
+          <span v-else-if="tab.saving" class="tab-saving" :title="t('saving')" />
           <span class="tab-close" :title="t('close')" @click.stop="store.closeTab(tab.id)">×</span>
         </div>
       </div>
