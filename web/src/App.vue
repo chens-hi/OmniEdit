@@ -44,7 +44,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.6.57';
+const appVersion = '0.6.58';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -602,6 +602,10 @@ function ctxSelectAll() {
 function onEditorContextmenu(e: MouseEvent) {
   // 空白页无编辑内容，走浏览器默认菜单
   if (!store.activeTab) return;
+  // 搜索面板内的右键放行浏览器原生菜单：面板输入框需要原生「粘贴」
+  // （自定义菜单的粘贴作用于编辑器 view，目标错误）。面板是 CM panel，
+  // 挂在 .cm-editor 内部，必须先排除。
+  if ((e.target as HTMLElement | null)?.closest('.omni-search')) return;
   e.preventDefault();
   editorCtx.value = { x: e.clientX, y: e.clientY };
 }
