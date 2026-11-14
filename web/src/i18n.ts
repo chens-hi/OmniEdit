@@ -77,7 +77,7 @@ const dict = {
   menuFind: { zh: '查找…', en: 'Find…' },
   menuReplace: { zh: '替换…', en: 'Replace…' },
   menuWordWrap: { zh: '自动换行', en: 'Word Wrap' },
-  menuMaxEdit: { zh: '大文件编辑上限', en: 'Max Edit Size' },
+  menuMaxEdit: { zh: '编辑上限', en: 'Edit Limit' },
   menuDisplay: { zh: '显示符号', en: 'Show Symbols' },
   showSpacesLabel: { zh: '空格', en: 'Spaces' },
   showTabsLabel: { zh: '制表符', en: 'Tabs' },
