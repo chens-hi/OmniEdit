@@ -112,6 +112,14 @@ export function createSearchPanel(): (view: EditorView) => Panel {
 
     row1.append(refs.searchInput, nav, refs.caseBtn, refs.regexpBtn, refs.wordBtn, expandBtn, closeBtn);
 
+    // ---- 匹配计数：放搜索行（row1）末尾 ----
+    // 历史 bug：countEl 曾放在替换行（row2），而替换行默认 display:none，
+    // 查找模式下计数永远看不见。计数属于搜索行为，必须在搜索行。
+    refs.countEl = document.createElement('span');
+    refs.countEl.className = 'omni-count';
+    refs.countEl.textContent = '';
+    row1.append(refs.countEl);
+
     // ---- 替换行 ----
     const row2 = document.createElement('div');
     row2.className = 'omni-row';
@@ -128,11 +136,7 @@ export function createSearchPanel(): (view: EditorView) => Panel {
     repAllBtn.addEventListener('mousedown', (e) => { e.preventDefault(); replaceAll(view); });
     actions.append(repBtn, repAllBtn);
 
-    refs.countEl = document.createElement('span');
-    refs.countEl.className = 'omni-count';
-    refs.countEl.textContent = '';
-
-    row2.append(refs.replaceInput, actions, refs.countEl);
+    row2.append(refs.replaceInput, actions);
     row2.style.display = replaceExpanded ? '' : 'none'; // 初始模式：查找=收起，替换=展开
     root.append(row1, row2);
 
@@ -186,29 +190,75 @@ export function createSearchPanel(): (view: EditorView) => Panel {
       set(safe(refs.wordBtn, 'wordBtn'), q.wholeWord);
     }
 
-    // ---- 匹配计数（150ms 防抖；文档超 1 万行显示 …）----
+    // ---- 匹配计数（150ms 防抖；大文件异步分批统计，不放弃任何文件）----
     let countTimer: number | undefined;
     let lastSearch = '';
-    let lastDocRev = -1;
+    // 异步统计序号：新输入/文档变化使在途统计作废（seq 比对）
+    let countSeq = 0;
+
+    /** 让出主线程（setTimeout 而非 rAF：后台标签页 rAF 停摆会卡住统计）。 */
+    const yieldToUI = () => new Promise<void>(r => window.setTimeout(r, 0));
+
+    /**
+     * 分批统计匹配总数。
+     *
+     * 旧实现：文档超 1 万行直接显示「…」放弃计数——10MB 文件（13 万行）
+     * 永远看不到匹配数。
+     * 新实现：每批扫约 2 万字符（~5ms），批间 yield 让出主线程，UI 保持可交互；
+     * 扫描过程中实时更新已计到的数量（数字渐进增长），完成后显示最终值。
+     * seq 比对：输入变化/文档变化立即作废在途统计，避免旧结果覆盖新输入。
+     */
+    async function countMatchesAsync(seq: number, q: SearchQuery) {
+      const cursor = q.getCursor(view.state.doc);
+      let total = 0;
+      const BATCH_CHARS = 20_000;
+      let lastUpdate = performance.now();
+      while (true) {
+        if (seq !== countSeq) return; // 已被新统计作废
+        let batchChars = 0;
+        while (!cursor.next().done) {
+          total++;
+          batchChars += 200; // 近似：每个匹配平均占 200 字符的扫描量
+          if (batchChars >= BATCH_CHARS) break;
+        }
+        if (batchChars < BATCH_CHARS) {
+          // 游标耗尽：显示最终结果
+          refs.countEl.textContent = total > 0
+            ? (total >= 9999 ? `9999+ ${t('matchesUnit')}` : `${total} ${t('matchesUnit')}`)
+            : t('noMatch');
+          return;
+        }
+        // 批间：更新渐进数字 + 让出主线程
+        if (performance.now() - lastUpdate > 60) {
+          refs.countEl.textContent = `${total} ${t('matchesUnit')}…`;
+          lastUpdate = performance.now();
+        }
+        await yieldToUI();
+        if (seq !== countSeq) return;
+      }
+    }
 
     function scheduleCount() {
       window.clearTimeout(countTimer);
       countTimer = window.setTimeout(() => {
         const search = refs.searchInput.value;
-        const rev = view.state.doc.toString().length; // 粗略版本号：内容长度变化即重算
-        if (search === lastSearch && rev === lastDocRev) return;
-        lastSearch = search;
-        lastDocRev = rev;
+        const docLen = view.state.doc.length;
         if (!search) { refs.countEl.textContent = ''; return; }
-        if (view.state.doc.lines > 10000) { refs.countEl.textContent = '…'; return; }
         try {
           const q = getSearchQuery(view.state);
-          let total = 0;
-          const cursor = q.getCursor(view.state.doc);
-          while (!cursor.next().done && total < 9999) total++;
-          refs.countEl.textContent = total > 0
-            ? `${Math.min(total, 9999)} ${t('matchesUnit')}`
-            : t('noMatch');
+          const seq = ++countSeq;
+          // 小文档同步算（<10ms 无感）；大文档异步分批（阈值 20 万字符）
+          if (docLen <= 200_000) {
+            let total = 0;
+            const cursor = q.getCursor(view.state.doc);
+            while (!cursor.next().done && total < 9999) total++;
+            refs.countEl.textContent = total > 0
+              ? `${total} ${t('matchesUnit')}`
+              : t('noMatch');
+          } else {
+            refs.countEl.textContent = t('counting');
+            void countMatchesAsync(seq, q);
+          }
         } catch {
           // 非法正则输入中途态：不显示计数
           refs.countEl.textContent = '';
@@ -273,13 +323,15 @@ export function createSearchPanel(): (view: EditorView) => Panel {
         applyReplaceMode = null;
       },
       update(u) {
-        // 官方 keymap/外部 effect 改了 query 时回填 UI
+        // 官方 keymap/外部 effect 改了 query 时回填 UI。
+        // 注意：这里**不调用 scheduleCount**——dispatchQuery 路径已经触发过；
+        // update 由 dispatchQuery 的 effect 引起，再调一次会造成双 SC 交错，
+        // 去重逻辑自锁（后触发者看到 lastSearch 已更新而跳过），计数永远为空。
         try {
           const q = getSearchQuery(u.state);
           if (refs.searchInput && q.search !== lastSearch) {
             refs.searchInput.value = q.search;
             lastSearch = q.search;
-            scheduleCount();
           }
           if (refs.replaceInput && refs.replaceInput.value !== q.replace) {
             refs.replaceInput.value = q.replace;
@@ -292,3 +344,13 @@ export function createSearchPanel(): (view: EditorView) => Panel {
     } satisfies Panel;
   };
 }
+
+
+
+
+
+// BUILD-MARKER-340175569
+
+
+
+

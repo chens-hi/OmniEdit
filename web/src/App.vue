@@ -44,7 +44,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.6.55';
+const appVersion = '0.6.56';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -243,7 +243,8 @@ function mountEditor(tab: { id: number; content: string; path: string; name: str
       highlightActiveLine(),
       highlightActiveLineGutter(),
       highlightSpecialChars(),
-      highlightSelectionMatches(),
+      // 选词高亮：限制最多 100 处（大文件里选中常见词会累积高亮层拖慢渲染）
+      highlightSelectionMatches({ maxMatches: 100 }),
       // foldGutter 不在此处：它要与行号保持固定左右顺序，交给 lineNoCompartment
       // 统一管理（见 buildLineNoExts）。放在这里会排到行号左侧。
       history(),
