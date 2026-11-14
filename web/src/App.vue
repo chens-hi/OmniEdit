@@ -44,7 +44,7 @@ const showPreview = ref(false);
 // 关于模态
 const showAbout = ref(false);
 // 版本号：与 manifest 同步维护（构建时不自动注入，手工同步即可）
-const appVersion = '0.6.56';
+const appVersion = '0.6.57';
 // 光标行列（状态栏实时显示；程序化同步与用户输入都更新）。
 const cursor = ref({ line: 1, col: 1 });
 
@@ -426,7 +426,32 @@ function onSave() {
 
 // 菜单动作：查找/替换（App 持有 view 实例）
 function onMenuFind(mode: 'find' | 'replace') {
-  if (view) openSearch(view, mode);
+  // 预览态：面板挂在编辑区（v-show 隐藏）里，直接打开会「看不见」——
+  // 先切回编辑态再打开搜索。
+  if (showPreview.value) showPreview.value = false;
+  // 无活动页签（空白页）：view 为 null，提示先打开文件。
+  if (!view || !store.activeTab) {
+    store.toast(t('needOpenFirst'), 'info');
+    return;
+  }
+  openSearch(view, mode);
+}
+
+// 全局 Ctrl+F/H 兜底：焦点在页签/菜单/面板输入框等非编辑器区域时，
+// CM keymap 不生效——document 级监听保证任何位置都能呼出搜索。
+// 编辑器内按键由 CM keymap（Prec.highest）先行处理并 return true，
+// 冒泡到这里时已消费；未消费的（非编辑器焦点）走这里。
+function onGlobalFindKey(e: KeyboardEvent) {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k !== 'f' && k !== 'h') return;
+  // 输入框内：浏览器原生全选场景不抢（Ctrl+F 在输入框里仍呼出搜索，符合编辑器习惯）
+  if (!store.activeTab) return; // 空白页交给 onMenuFind 提示
+  if (showPreview.value) showPreview.value = false;
+  if (view) {
+    e.preventDefault();
+    openSearch(view, k === 'h' ? 'replace' : 'find');
+  }
 }
 
 /** 编辑菜单 剪贴板/全选：分发到对应操作（作用于活动页签的编辑器）。 */
@@ -740,6 +765,8 @@ function onTogglePointerCancel(e: PointerEvent) {
 }
 
 onMounted(async () => {
+  // 全局查找快捷键兜底（见 onGlobalFindKey 注释）。
+  window.addEventListener('keydown', onGlobalFindKey);
   // 初始化主题（跟随宿主深/浅色）；失败保持默认暗色，不阻塞编辑器。
   void initTheme();
   // 初始化语言（跟随宿主中/英文）；失败保持默认中文。

@@ -32,6 +32,7 @@ const dict = {
     zh: '文件过大：{size} MB，超过当前编辑上限 {limit} MB（可在「视图」菜单调整）',
     en: 'File too large: {size} MB exceeds your {limit} MB editing limit (adjustable in View menu)',
   },
+  needOpenFirst: { zh: '请先打开或新建一个文件', en: 'Open or create a file first' },
   saveFailed: { zh: '保存失败', en: 'Save failed' },
   // 打开失败的分类文案：一句话说清结论 + 数据，不用嵌套冒号。
   openTooLarge: {
