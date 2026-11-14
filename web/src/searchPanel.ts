@@ -205,14 +205,14 @@ export function createSearchPanel(): (view: EditorView) => Panel {
      * 旧实现：文档超 1 万行直接显示「…」放弃计数——10MB 文件（13 万行）
      * 永远看不到匹配数。
      * 新实现：每批扫约 2 万字符（~5ms），批间 yield 让出主线程，UI 保持可交互；
-     * 扫描过程中实时更新已计到的数量（数字渐进增长），完成后显示最终值。
-     * seq 比对：输入变化/文档变化立即作废在途统计，避免旧结果覆盖新输入。
+     * 统计期间 countEl 显示转圈 loading（与页签保存同款视觉语言，尺寸恒定
+     * 不溢出搜索行），完成后显示最终数字。seq 比对：输入变化/文档变化
+     * 立即作废在途统计，避免旧结果覆盖新输入。
      */
     async function countMatchesAsync(seq: number, q: SearchQuery) {
       const cursor = q.getCursor(view.state.doc);
       let total = 0;
       const BATCH_CHARS = 20_000;
-      let lastUpdate = performance.now();
       while (true) {
         if (seq !== countSeq) return; // 已被新统计作废
         let batchChars = 0;
@@ -222,19 +222,28 @@ export function createSearchPanel(): (view: EditorView) => Panel {
           if (batchChars >= BATCH_CHARS) break;
         }
         if (batchChars < BATCH_CHARS) {
-          // 游标耗尽：显示最终结果
+          // 游标耗尽：切回数字显示最终结果
+          setCountLoading(false);
           refs.countEl.textContent = total > 0
             ? (total >= 9999 ? `9999+ ${t('matchesUnit')}` : `${total} ${t('matchesUnit')}`)
             : t('noMatch');
           return;
         }
-        // 批间：更新渐进数字 + 让出主线程
-        if (performance.now() - lastUpdate > 60) {
-          refs.countEl.textContent = `${total} ${t('matchesUnit')}…`;
-          lastUpdate = performance.now();
-        }
         await yieldToUI();
         if (seq !== countSeq) return;
+      }
+    }
+
+    /**
+     * 切换计数区的 loading 态：转圈替换数字文本。
+     * 转圈用独立 span（复用 tab-spin 动画），数字文本置空避免挤压溢出。
+     */
+    function setCountLoading(on: boolean) {
+      if (on) {
+        refs.countEl.textContent = '';
+        refs.countEl.classList.add('omni-count-loading');
+      } else {
+        refs.countEl.classList.remove('omni-count-loading');
       }
     }
 
@@ -243,7 +252,7 @@ export function createSearchPanel(): (view: EditorView) => Panel {
       countTimer = window.setTimeout(() => {
         const search = refs.searchInput.value;
         const docLen = view.state.doc.length;
-        if (!search) { refs.countEl.textContent = ''; return; }
+        if (!search) { setCountLoading(false); refs.countEl.textContent = ''; return; }
         try {
           const q = getSearchQuery(view.state);
           const seq = ++countSeq;
@@ -256,11 +265,12 @@ export function createSearchPanel(): (view: EditorView) => Panel {
               ? `${total} ${t('matchesUnit')}`
               : t('noMatch');
           } else {
-            refs.countEl.textContent = t('counting');
+            setCountLoading(true);
             void countMatchesAsync(seq, q);
           }
         } catch {
           // 非法正则输入中途态：不显示计数
+          setCountLoading(false);
           refs.countEl.textContent = '';
         }
       }, 150);

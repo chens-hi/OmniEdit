@@ -505,6 +505,22 @@ body,
   flex-shrink: 0;
 }
 
+/* 计数统计中：转圈 loading（与页签保存 tab-saving 同款视觉语言）。
+   尺寸恒定 8px，渐进数字不再显示——避免搜索行挤压溢出。 */
+.omni-count-loading {
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  align-self: center;
+  border-radius: 50%;
+  border: 1.5px solid var(--fg-dim);
+  border-top-color: transparent;
+  animation: tab-spin 0.8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .omni-count-loading { animation-duration: 2.4s; }
+}
+
 /* 搜索命中配色已移到 App.vue 的 EditorView.theme（走 --sel-find / --sel-find-active，
    随主题切换）。此处不再保留硬编码橙色——它与主题 accent 不搭，且会与
    编辑器主题规则打架。 */

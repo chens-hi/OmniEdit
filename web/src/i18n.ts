@@ -120,7 +120,6 @@ const dict = {
   toggleReplace: { zh: '展开/收起替换 (Ctrl+H)', en: 'Toggle Replace (Ctrl+H)' },
   closeSearch: { zh: '关闭 (Esc)', en: 'Close (Esc)' },
   matchesUnit: { zh: '处', en: 'matches' },
-  counting: { zh: '统计中…', en: 'Counting…' },
   noMatch: { zh: '无匹配', en: 'No matches' },
 
   // 标签栏
@@ -222,3 +221,4 @@ export async function initLang(): Promise<void> {
     // 事件总线不可用：维持启动读取结果。
   }
 }
+
